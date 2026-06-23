@@ -35,26 +35,26 @@ That's it! The application is now running with an in-memory database.
 
 ```bash
 # Create a note
-curl -X POST http://localhost:3000/api/notes \
+curl -X POST http://localhost:3000/api/v1/notes \
   -H "Content-Type: application/json" \
   -d '{"title":"My First Note","content":"Hello World"}'
 
 # List all notes
-curl http://localhost:3000/api/notes
+curl http://localhost:3000/api/v1/notes
 
 # Search notes
-curl http://localhost:3000/api/notes?q=hello
+curl http://localhost:3000/api/v1/notes?q=hello
 
 # Get a specific note
-curl http://localhost:3000/api/notes/{NOTE_ID}
+curl http://localhost:3000/api/v1/notes/{NOTE_ID}
 
 # Update a note
-curl -X PUT http://localhost:3000/api/notes/{NOTE_ID} \
+curl -X PUT http://localhost:3000/api/v1/notes/{NOTE_ID} \
   -H "Content-Type: application/json" \
   -d '{"title":"Updated Title"}'
 
 # Delete a note
-curl -X DELETE http://localhost:3000/api/notes/{NOTE_ID}
+curl -X DELETE http://localhost:3000/api/v1/notes/{NOTE_ID}
 ```
 
 ## Available Scripts
@@ -102,7 +102,7 @@ src/
 When you create a note, this happens:
 
 1. **UI** (`app/page.tsx`) - Form submission
-2. **API Route** (`app/api/notes/route.ts`) - Receives HTTP request
+2. **API Route** (`app/api/v1/notes/route.ts`) - Receives HTTP request
 3. **Controller** (`interfaces/http/controllers/NoteController.ts`) - Validates input
 4. **Use Case** (`application/use-cases/CreateNoteUseCase.ts`) - Orchestrates logic
 5. **Entity** (`domain/entities/Note.ts`) - Validates business rules

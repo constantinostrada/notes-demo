@@ -226,7 +226,7 @@ export class NoteController {
 ```
 1. User submits form in UI (interfaces/components/NoteForm.tsx)
    ↓
-2. POST request to /api/notes (app/api/notes/route.ts)
+2. POST request to /api/v1/notes (app/api/v1/notes/route.ts)
    ↓
 3. Controller validates input (interfaces/http/controllers/NoteController.ts)
    ↓

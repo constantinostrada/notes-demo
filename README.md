@@ -146,7 +146,7 @@ InMemoryNoteRepository implements INoteRepository with actual data storage
 ### Interfaces Layer
 ```typescript
 // API Route handler
-POST /api/notes validates input, calls CreateNoteUseCase, returns response
+POST /api/v1/notes validates input, calls CreateNoteUseCase, returns response
 ```
 
 ## Benefits of This Architecture

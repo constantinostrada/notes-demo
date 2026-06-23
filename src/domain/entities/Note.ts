@@ -13,7 +13,7 @@ export class Note {
     private readonly _createdAt: Date,
     private _updatedAt: Date
   ) {
-    this.validateTitle(title);
+    this.validateTitle(this._title);
   }
 
   /**

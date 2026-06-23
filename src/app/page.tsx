@@ -8,6 +8,7 @@
 
 import { useState, useEffect } from 'react';
 import { NoteOutputDTO } from '@/application/dtos/NoteDTO';
+import { notesApi } from '@/interfaces/http/apiRoutes';
 import { NoteCard } from '@/interfaces/components/NoteCard';
 import { NoteForm } from '@/interfaces/components/NoteForm';
 import { SearchBar } from '@/interfaces/components/SearchBar';
@@ -24,8 +25,8 @@ export default function HomePage() {
       setIsLoading(true);
       setError(null);
       const url = searchQuery
-        ? `/api/notes?q=${encodeURIComponent(searchQuery)}`
-        : '/api/notes';
+        ? notesApi.search(searchQuery)
+        : notesApi.collection();
       const response = await fetch(url);
       const result = await response.json();
 
@@ -47,7 +48,7 @@ export default function HomePage() {
 
   const handleCreateNote = async (title: string, content: string) => {
     try {
-      const response = await fetch('/api/notes', {
+      const response = await fetch(notesApi.collection(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content }),
@@ -70,7 +71,7 @@ export default function HomePage() {
     if (!editingNote) return;
 
     try {
-      const response = await fetch(`/api/notes/${editingNote.id}`, {
+      const response = await fetch(notesApi.resource(editingNote.id), {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title, content }),
@@ -93,16 +94,16 @@ export default function HomePage() {
     if (!confirm('Are you sure you want to delete this note?')) return;
 
     try {
-      const response = await fetch(`/api/notes/${id}`, {
+      const response = await fetch(notesApi.resource(id), {
         method: 'DELETE',
       });
 
-      const result = await response.json();
-
-      if (result.success) {
+      // A successful delete returns 204 No Content (empty body).
+      if (response.ok) {
         fetchNotes();
       } else {
-        setError(result.error || 'Failed to delete note');
+        const result = await response.json().catch(() => null);
+        setError(result?.error || 'Failed to delete note');
       }
     } catch (err) {
       setError('Failed to delete note');
