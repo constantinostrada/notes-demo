@@ -1,9 +1,11 @@
 /**
  * Domain Entity: Note
- * 
+ *
  * Represents a note with business rules and invariants.
  * Entities have identity and lifecycle.
  */
+
+import { InvalidNoteException } from '../exceptions/DomainException';
 
 export class Note {
   private constructor(
@@ -42,10 +44,10 @@ export class Note {
    */
   private validateTitle(title: string): void {
     if (!title || title.trim().length === 0) {
-      throw new Error('Note title cannot be empty');
+      throw new InvalidNoteException('Note title cannot be empty');
     }
     if (title.length > 200) {
-      throw new Error('Note title cannot exceed 200 characters');
+      throw new InvalidNoteException('Note title cannot exceed 200 characters');
     }
   }
 

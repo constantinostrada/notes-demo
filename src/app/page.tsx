@@ -30,10 +30,10 @@ export default function HomePage() {
       const response = await fetch(url);
       const result = await response.json();
 
-      if (result.success) {
+      if (response.ok) {
         setNotes(result.data.notes);
       } else {
-        setError(result.error || 'Failed to fetch notes');
+        setError(result.error?.message || 'Failed to fetch notes');
       }
     } catch (err) {
       setError('Failed to connect to server');
@@ -56,11 +56,11 @@ export default function HomePage() {
 
       const result = await response.json();
 
-      if (result.success) {
+      if (response.ok) {
         setIsCreating(false);
         fetchNotes();
       } else {
-        setError(result.error || 'Failed to create note');
+        setError(result.error?.message || 'Failed to create note');
       }
     } catch (err) {
       setError('Failed to create note');
@@ -79,11 +79,11 @@ export default function HomePage() {
 
       const result = await response.json();
 
-      if (result.success) {
+      if (response.ok) {
         setEditingNote(null);
         fetchNotes();
       } else {
-        setError(result.error || 'Failed to update note');
+        setError(result.error?.message || 'Failed to update note');
       }
     } catch (err) {
       setError('Failed to update note');
@@ -103,7 +103,7 @@ export default function HomePage() {
         fetchNotes();
       } else {
         const result = await response.json().catch(() => null);
-        setError(result?.error || 'Failed to delete note');
+        setError(result?.error?.message || 'Failed to delete note');
       }
     } catch (err) {
       setError('Failed to delete note');

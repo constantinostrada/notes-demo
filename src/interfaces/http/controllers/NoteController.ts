@@ -1,162 +1,93 @@
 /**
  * Interface: Note Controller
- * 
+ *
  * Thin adapter that validates input, calls use cases, and formats responses.
  * No business logic - just orchestration and HTTP concerns.
+ *
+ * Validation is done with zod schemas; every error path goes through the
+ * central `mapError` so responses stay uniform (see `apiResponse.ts`).
  */
 
 import { container } from '@/infrastructure/di/container';
-import { NoteNotFoundException } from '@/domain/exceptions/DomainException';
+import {
+  ControllerResult,
+  ok,
+  noContent,
+  mapError,
+} from '@/interfaces/http/apiResponse';
+import {
+  createNoteSchema,
+  updateNoteSchema,
+} from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
-  static async createNote(body: unknown) {
+  static async createNote(body: unknown): Promise<ControllerResult> {
     try {
+      const input = createNoteSchema.parse(body);
+
       const useCase = container.getCreateNoteUseCase();
-      
-      // Basic input validation
-      if (!body || typeof body !== 'object') {
-        return {
-          success: false,
-          error: 'Invalid request body',
-          status: 400,
-        };
-      }
+      const result = await useCase.execute(input);
 
-      const { title, content } = body as { title?: string; content?: string };
-
-      if (!title) {
-        return {
-          success: false,
-          error: 'Title is required',
-          status: 400,
-        };
-      }
-
-      const result = await useCase.execute({
-        title,
-        content: content || '',
-      });
-
-      return {
-        success: true,
-        data: result,
-        status: 201,
-      };
+      return ok(result, 201);
     } catch (error) {
-      return this.handleError(error);
+      return mapError(error);
     }
   }
 
-  static async getNote(id: string) {
+  static async getNote(id: string): Promise<ControllerResult> {
     try {
       const useCase = container.getGetNoteUseCase();
       const result = await useCase.execute({ id });
 
-      return {
-        success: true,
-        data: result,
-        status: 200,
-      };
+      return ok(result);
     } catch (error) {
-      return this.handleError(error);
+      return mapError(error);
     }
   }
 
-  static async listNotes() {
+  static async listNotes(): Promise<ControllerResult> {
     try {
       const useCase = container.getListNotesUseCase();
       const result = await useCase.execute();
 
-      return {
-        success: true,
-        data: result,
-        status: 200,
-      };
+      return ok(result);
     } catch (error) {
-      return this.handleError(error);
+      return mapError(error);
     }
   }
 
-  static async updateNote(id: string, body: unknown) {
+  static async updateNote(id: string, body: unknown): Promise<ControllerResult> {
     try {
+      const input = updateNoteSchema.parse(body);
+
       const useCase = container.getUpdateNoteUseCase();
+      const result = await useCase.execute({ id, ...input });
 
-      if (!body || typeof body !== 'object') {
-        return {
-          success: false,
-          error: 'Invalid request body',
-          status: 400,
-        };
-      }
-
-      const { title, content } = body as { title?: string; content?: string };
-
-      const result = await useCase.execute({
-        id,
-        title,
-        content,
-      });
-
-      return {
-        success: true,
-        data: result,
-        status: 200,
-      };
+      return ok(result);
     } catch (error) {
-      return this.handleError(error);
+      return mapError(error);
     }
   }
 
-  static async deleteNote(id: string) {
+  static async deleteNote(id: string): Promise<ControllerResult> {
     try {
       const useCase = container.getDeleteNoteUseCase();
       await useCase.execute({ id });
 
-      return {
-        success: true,
-        status: 204,
-      };
+      return noContent();
     } catch (error) {
-      return this.handleError(error);
+      return mapError(error);
     }
   }
 
-  static async searchNotes(query: string) {
+  static async searchNotes(query: string): Promise<ControllerResult> {
     try {
       const useCase = container.getSearchNotesUseCase();
       const result = await useCase.execute({ query });
 
-      return {
-        success: true,
-        data: result,
-        status: 200,
-      };
+      return ok(result);
     } catch (error) {
-      return this.handleError(error);
+      return mapError(error);
     }
-  }
-
-  private static handleError(error: unknown) {
-    if (error instanceof NoteNotFoundException) {
-      return {
-        success: false,
-        error: error.message,
-        status: 404,
-      };
-    }
-
-    if (error instanceof Error) {
-      return {
-        success: false,
-        error: error.message,
-        status: 400,
-      };
-    }
-
-    return {
-      success: false,
-      error: 'Internal server error',
-      status: 500,
-    };
   }
 }

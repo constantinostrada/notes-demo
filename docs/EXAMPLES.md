@@ -163,48 +163,50 @@ class DIContainer {
 
 ### Step 4: Interfaces Layer
 
-Create controller and API routes:
+Validate the payload with a zod schema and route every error through the shared
+`mapError`, so the new resource gets the same uniform envelope as Notes (see
+[API.md → Validation & error handling](./API.md#validation--error-handling)).
+
+```typescript
+// src/interfaces/http/validation/tagSchemas.ts
+import { z } from 'zod';
+
+export const createTagSchema = z.object({
+  name: z.string().trim().min(1, { message: 'Name is required' }),
+  color: z.string().trim().min(1, { message: 'Color is required' }),
+});
+```
 
 ```typescript
 // src/interfaces/http/controllers/TagController.ts
 import { container } from '@/infrastructure/di/container';
+import { ControllerResult, ok, mapError } from '@/interfaces/http/apiResponse';
+import { createTagSchema } from '@/interfaces/http/validation/tagSchemas';
 
 export class TagController {
-  static async createTag(body: unknown) {
+  static async createTag(body: unknown): Promise<ControllerResult> {
     try {
+      const input = createTagSchema.parse(body); // throws ZodError → 400
       const useCase = container.getCreateTagUseCase();
-      
-      if (!body || typeof body !== 'object') {
-        return { success: false, error: 'Invalid request body', status: 400 };
-      }
-
-      const { name, color } = body as { name?: string; color?: string };
-
-      if (!name || !color) {
-        return { success: false, error: 'Name and color are required', status: 400 };
-      }
-
-      const result = await useCase.execute({ name, color });
-      return { success: true, data: result, status: 201 };
+      const result = await useCase.execute(input);
+      return ok(result, 201);
     } catch (error) {
-      if (error instanceof Error) {
-        return { success: false, error: error.message, status: 400 };
-      }
-      return { success: false, error: 'Internal server error', status: 500 };
+      return mapError(error); // ZodError / DomainException / unknown → uniform
     }
   }
 }
 ```
 
 ```typescript
-// src/app/api/tags/route.ts
-import { NextRequest, NextResponse } from 'next/server';
+// src/app/api/v1/tags/route.ts
+import { NextRequest } from 'next/server';
 import { TagController } from '@/interfaces/http/controllers/TagController';
+import { toNextResponse } from '@/interfaces/http/apiResponse';
 
 export async function POST(request: NextRequest) {
-  const body = await request.json();
+  const body = await request.json().catch(() => undefined);
   const result = await TagController.createTag(body);
-  return NextResponse.json(result, { status: result.status });
+  return toNextResponse(result);
 }
 ```
 

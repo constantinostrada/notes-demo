@@ -7,11 +7,13 @@
  *   - DELETE → delete a note
  *
  * Like the collection route, this is a thin transport adapter that delegates
- * to the NoteController; use cases are resolved from the DI container there.
+ * to the NoteController; response serialization (success, error envelope, and
+ * body-less 204) is handled uniformly by `toNextResponse`.
  */
 
-import { NextRequest, NextResponse } from 'next/server';
+import { NextRequest } from 'next/server';
 import { NoteController } from '@/interfaces/http/controllers/NoteController';
+import { toNextResponse } from '@/interfaces/http/apiResponse';
 
 interface RouteContext {
   params: {
@@ -21,23 +23,17 @@ interface RouteContext {
 
 export async function GET(_request: NextRequest, { params }: RouteContext) {
   const result = await NoteController.getNote(params.id);
-  return NextResponse.json(result, { status: result.status });
+  return toNextResponse(result);
 }
 
 export async function PUT(request: NextRequest, { params }: RouteContext) {
-  const body = await request.json().catch(() => null);
+  // `undefined` on malformed JSON → caught by schema validation as a 400.
+  const body = await request.json().catch(() => undefined);
   const result = await NoteController.updateNote(params.id, body);
-  return NextResponse.json(result, { status: result.status });
+  return toNextResponse(result);
 }
 
 export async function DELETE(_request: NextRequest, { params }: RouteContext) {
   const result = await NoteController.deleteNote(params.id);
-
-  // A 204 "No Content" response must not carry a body (per the HTTP spec the
-  // Response constructor rejects a body with status 204), so return an empty one.
-  if (result.status === 204) {
-    return new NextResponse(null, { status: 204 });
-  }
-
-  return NextResponse.json(result, { status: result.status });
+  return toNextResponse(result);
 }

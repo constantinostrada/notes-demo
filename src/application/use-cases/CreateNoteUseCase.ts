@@ -8,6 +8,7 @@
 import { Note } from '@/domain/entities/Note';
 import { NoteId } from '@/domain/value-objects/NoteId';
 import { INoteRepository } from '@/domain/repositories/INoteRepository';
+import { InvalidNoteException } from '@/domain/exceptions/DomainException';
 import { CreateNoteInputDTO, NoteOutputDTO } from '../dtos/NoteDTO';
 import { NoteMapper } from '../mappers/NoteMapper';
 
@@ -17,7 +18,7 @@ export class CreateNoteUseCase {
   async execute(input: CreateNoteInputDTO): Promise<NoteOutputDTO> {
     // Validate input
     if (!input.title || input.title.trim().length === 0) {
-      throw new Error('Title is required');
+      throw new InvalidNoteException('Title is required');
     }
 
     // Generate new ID
