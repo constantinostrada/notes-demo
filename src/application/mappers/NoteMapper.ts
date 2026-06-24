@@ -17,6 +17,7 @@ export class NoteMapper {
       id: note.id,
       title: note.title,
       content: note.content,
+      tags: note.tags,
       wordCount: note.getWordCount(),
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),

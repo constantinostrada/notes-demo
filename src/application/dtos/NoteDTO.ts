@@ -8,18 +8,21 @@
 export interface CreateNoteInputDTO {
   title: string;
   content: string;
+  tags?: string[];
 }
 
 export interface UpdateNoteInputDTO {
   id: string;
   title?: string;
   content?: string;
+  tags?: string[];
 }
 
 export interface NoteOutputDTO {
   id: string;
   title: string;
   content: string;
+  tags: string[];
   wordCount: number;
   createdAt: string;
   updatedAt: string;
@@ -35,6 +38,11 @@ export interface GetNoteInputDTO {
 
 export interface SearchNotesInputDTO {
   query: string;
+}
+
+export interface ListNotesInputDTO {
+  /** Optional tag filter; when present, only notes with this tag are returned. */
+  tag?: string;
 }
 
 export interface ListNotesOutputDTO {

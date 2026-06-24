@@ -30,6 +30,11 @@ export class UpdateNoteUseCase {
       note.updateContent(input.content);
     }
 
+    // Update tags if provided (normalization + rules enforced in entity)
+    if (input.tags !== undefined) {
+      note.updateTags(input.tags);
+    }
+
     // Persist changes
     await this.noteRepository.save(note);
 

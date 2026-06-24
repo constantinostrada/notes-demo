@@ -8,22 +8,32 @@
 import { InvalidNoteException } from '../exceptions/DomainException';
 
 export class Note {
+  /** Business rule: a single tag cannot exceed this many characters. */
+  private static readonly MAX_TAG_LENGTH = 50;
+  /** Business rule: a note cannot carry more than this many distinct tags. */
+  private static readonly MAX_TAGS = 20;
+
+  private _tags: string[];
+
   private constructor(
     private readonly _id: string,
     private _title: string,
     private _content: string,
+    tags: string[],
     private readonly _createdAt: Date,
     private _updatedAt: Date
   ) {
     this.validateTitle(this._title);
+    this._tags = Note.normalizeTags(tags);
+    this.validateTags(this._tags);
   }
 
   /**
    * Factory method to create a new Note
    */
-  static create(id: string, title: string, content: string): Note {
+  static create(id: string, title: string, content: string, tags: string[] = []): Note {
     const now = new Date();
-    return new Note(id, title, content, now, now);
+    return new Note(id, title, content, tags, now, now);
   }
 
   /**
@@ -33,10 +43,11 @@ export class Note {
     id: string,
     title: string,
     content: string,
+    tags: string[],
     createdAt: Date,
     updatedAt: Date
   ): Note {
-    return new Note(id, title, content, createdAt, updatedAt);
+    return new Note(id, title, content, tags, createdAt, updatedAt);
   }
 
   /**
@@ -48,6 +59,41 @@ export class Note {
     }
     if (title.length > 200) {
       throw new InvalidNoteException('Note title cannot exceed 200 characters');
+    }
+  }
+
+  /**
+   * Normalize a single tag to its canonical form (trimmed, lower-cased).
+   * Exposed so callers that filter by tag can match the stored form exactly.
+   */
+  static normalizeTag(tag: string): string {
+    return tag.trim().toLowerCase();
+  }
+
+  /**
+   * Normalize a list of tags: canonicalize each, drop blanks, and de-duplicate
+   * while preserving first-seen order. The canonical form is what gets stored.
+   */
+  private static normalizeTags(tags: string[]): string[] {
+    const normalized = tags
+      .map((tag) => Note.normalizeTag(tag))
+      .filter((tag) => tag.length > 0);
+    return Array.from(new Set(normalized));
+  }
+
+  /**
+   * Business rule: bounded number of tags, each within a length limit.
+   */
+  private validateTags(tags: string[]): void {
+    if (tags.length > Note.MAX_TAGS) {
+      throw new InvalidNoteException(`Note cannot have more than ${Note.MAX_TAGS} tags`);
+    }
+    for (const tag of tags) {
+      if (tag.length > Note.MAX_TAG_LENGTH) {
+        throw new InvalidNoteException(
+          `Tag cannot exceed ${Note.MAX_TAG_LENGTH} characters`
+        );
+      }
     }
   }
 
@@ -65,6 +111,16 @@ export class Note {
    */
   updateContent(newContent: string): void {
     this._content = newContent;
+    this._updatedAt = new Date();
+  }
+
+  /**
+   * Replace the note's tags with validation (normalized + de-duplicated)
+   */
+  updateTags(newTags: string[]): void {
+    const normalized = Note.normalizeTags(newTags);
+    this.validateTags(normalized);
+    this._tags = normalized;
     this._updatedAt = new Date();
   }
 
@@ -96,6 +152,11 @@ export class Note {
 
   get content(): string {
     return this._content;
+  }
+
+  /** Returns a copy so callers can't mutate the note's internal tag list. */
+  get tags(): string[] {
+    return [...this._tags];
   }
 
   get createdAt(): Date {

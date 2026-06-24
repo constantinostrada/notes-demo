@@ -28,7 +28,8 @@ export class CreateNoteUseCase {
     const note = Note.create(
       noteId.toString(),
       input.title.trim(),
-      input.content || ''
+      input.content || '',
+      input.tags ?? []
     );
 
     // Persist via repository

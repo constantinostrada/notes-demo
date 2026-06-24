@@ -63,7 +63,7 @@ export class SqliteNoteRepository implements INoteRepository {
     this.initSchema();
   }
 
-  /** Create the table (and index) automatically if they don't exist yet. */
+  /** Create the tables (and indexes) automatically if they don't exist yet. */
   private initSchema(): void {
     this.db.exec(`
       CREATE TABLE IF NOT EXISTS notes (
@@ -74,28 +74,52 @@ export class SqliteNoteRepository implements INoteRepository {
         updated_at INTEGER NOT NULL
       );
       CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes (created_at DESC);
+
+      -- Tags are normalized into their own table (one row per note/tag pair).
+      -- ON DELETE CASCADE keeps tags in lock-step with their note; the pragma
+      -- 'foreign_keys = ON' (set in openNotesDatabase) makes that enforcement live.
+      CREATE TABLE IF NOT EXISTS note_tags (
+        note_id TEXT NOT NULL,
+        tag     TEXT NOT NULL,
+        PRIMARY KEY (note_id, tag),
+        FOREIGN KEY (note_id) REFERENCES notes (id) ON DELETE CASCADE
+      );
+      CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags (tag);
     `);
   }
 
   async save(note: Note): Promise<void> {
-    // Upsert: insert on create, update mutable fields on conflict. We never
+    // Upsert the note then fully rewrite its tags, atomically. We never
     // overwrite created_at so the original creation time is preserved.
-    this.db
-      .prepare(
-        `INSERT INTO notes (id, title, content, created_at, updated_at)
-         VALUES (@id, @title, @content, @createdAt, @updatedAt)
-         ON CONFLICT(id) DO UPDATE SET
-           title      = excluded.title,
-           content    = excluded.content,
-           updated_at = excluded.updated_at`
-      )
-      .run({
-        id: note.id,
-        title: note.title,
-        content: note.content,
-        createdAt: note.createdAt.getTime(),
-        updatedAt: note.updatedAt.getTime(),
-      });
+    const persist = this.db.transaction(() => {
+      this.db
+        .prepare(
+          `INSERT INTO notes (id, title, content, created_at, updated_at)
+           VALUES (@id, @title, @content, @createdAt, @updatedAt)
+           ON CONFLICT(id) DO UPDATE SET
+             title      = excluded.title,
+             content    = excluded.content,
+             updated_at = excluded.updated_at`
+        )
+        .run({
+          id: note.id,
+          title: note.title,
+          content: note.content,
+          createdAt: note.createdAt.getTime(),
+          updatedAt: note.updatedAt.getTime(),
+        });
+
+      // Replace-all keeps the tag set in sync on both create and update.
+      this.db.prepare('DELETE FROM note_tags WHERE note_id = ?').run(note.id);
+      const insertTag = this.db.prepare(
+        'INSERT INTO note_tags (note_id, tag) VALUES (?, ?)'
+      );
+      for (const tag of note.tags) {
+        insertTag.run(note.id, tag);
+      }
+    });
+
+    persist();
   }
 
   async findById(id: string): Promise<Note | null> {
@@ -137,12 +161,35 @@ export class SqliteNoteRepository implements INoteRepository {
     return rows.map((row) => this.toEntity(row));
   }
 
+  async findByTag(tag: string): Promise<Note[]> {
+    // The tag arrives already normalized (see Note.normalizeTag); match it
+    // exactly against the stored canonical form.
+    const rows = this.db
+      .prepare(
+        `SELECT n.* FROM notes n
+         JOIN note_tags t ON t.note_id = n.id
+         WHERE t.tag = ?
+         ORDER BY n.created_at DESC`
+      )
+      .all(tag) as NoteRow[];
+    return rows.map((row) => this.toEntity(row));
+  }
+
+  /** Load a note's tags in stable (alphabetical) order. */
+  private loadTags(noteId: string): string[] {
+    const rows = this.db
+      .prepare('SELECT tag FROM note_tags WHERE note_id = ? ORDER BY tag')
+      .all(noteId) as { tag: string }[];
+    return rows.map((row) => row.tag);
+  }
+
   /** Map a persistence row back into a domain entity. */
   private toEntity(row: NoteRow): Note {
     return Note.reconstitute(
       row.id,
       row.title,
       row.content,
+      this.loadTags(row.id),
       new Date(row.created_at),
       new Date(row.updated_at)
     );

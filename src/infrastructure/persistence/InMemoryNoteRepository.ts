@@ -18,6 +18,7 @@ export class InMemoryNoteRepository implements INoteRepository {
       id: note.id,
       title: note.title,
       content: note.content,
+      tags: note.tags,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
     };
@@ -27,6 +28,7 @@ export class InMemoryNoteRepository implements INoteRepository {
       serialized.id,
       serialized.title,
       serialized.content,
+      serialized.tags,
       serialized.createdAt,
       serialized.updatedAt
     );
@@ -62,6 +64,13 @@ export class InMemoryNoteRepository implements INoteRepository {
         note.title.toLowerCase().includes(lowerQuery) ||
         note.content.toLowerCase().includes(lowerQuery)
     );
+  }
+
+  async findByTag(tag: string): Promise<Note[]> {
+    // The tag arrives already normalized (see Note.normalizeTag); note.tags are
+    // stored in their canonical form too, so an exact match is correct.
+    const allNotes = await this.findAll();
+    return allNotes.filter((note) => note.tags.includes(tag));
   }
 
   // Utility method for testing/development

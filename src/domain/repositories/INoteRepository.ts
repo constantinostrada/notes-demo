@@ -40,4 +40,10 @@ export interface INoteRepository {
    * Search notes by title or content
    */
   search(query: string): Promise<Note[]>;
+
+  /**
+   * Find all notes that carry the given (already-normalized) tag.
+   * Returns empty array if none match.
+   */
+  findByTag(tag: string): Promise<Note[]>;
 }

@@ -19,6 +19,7 @@ import {
   createNoteSchema,
   updateNoteSchema,
   searchNotesSchema,
+  listNotesSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
@@ -46,10 +47,12 @@ export class NoteController {
     }
   }
 
-  static async listNotes(): Promise<ControllerResult> {
+  static async listNotes(rawTag?: unknown): Promise<ControllerResult> {
     try {
+      const { tag } = listNotesSchema.parse({ tag: rawTag });
+
       const useCase = container.getListNotesUseCase();
-      const result = await useCase.execute();
+      const result = await useCase.execute({ tag });
 
       return ok(result);
     } catch (error) {
