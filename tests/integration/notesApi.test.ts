@@ -3,7 +3,10 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { container } from '@/infrastructure/di/container';
 import { GET as listNotes, POST as createNote } from '@/app/api/v1/notes/route';
-import { GET as getNoteById } from '@/app/api/v1/notes/[id]/route';
+import {
+  GET as getNoteById,
+  DELETE as deleteNoteById,
+} from '@/app/api/v1/notes/[id]/route';
 import { GET as searchNotes } from '@/app/api/v1/notes/search/route';
 
 /**
@@ -131,6 +134,45 @@ describe('GET /api/v1/notes (list)', () => {
     expect(res.status).toBe(400);
     const { error } = await res.json();
     expect(error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('DELETE /api/v1/notes/:id (soft delete / archive)', () => {
+  it('archives a note: 204, hidden from list, visible with includeArchived', async () => {
+    const keep = await postNote({ title: 'Keep', content: 'stays' });
+    const archived = await postNote({ title: 'Archive me', content: 'gone' });
+
+    const del = await deleteNoteById(new NextRequest(`${BASE}/${archived.id}`), {
+      params: { id: archived.id },
+    });
+    expect(del.status).toBe(204);
+
+    // Default listing excludes the archived note.
+    const listed = await listNotes(new NextRequest(BASE));
+    const listedJson = await listed.json();
+    expect(listedJson.data.pagination.total).toBe(1);
+    expect(listedJson.data.notes.map((n: { id: string }) => n.id)).toEqual([keep.id]);
+
+    // ?includeArchived=true surfaces it, flagged with a deletedAt timestamp.
+    const withArchived = await listNotes(
+      new NextRequest(`${BASE}?includeArchived=true&sort=title`)
+    );
+    const withArchivedJson = await withArchived.json();
+    expect(withArchivedJson.data.pagination.total).toBe(2);
+    const archivedRow = withArchivedJson.data.notes.find(
+      (n: { id: string }) => n.id === archived.id
+    );
+    expect(archivedRow.deletedAt).toEqual(expect.any(String));
+  });
+
+  it('returns 404 NOTE_NOT_FOUND when archiving an unknown id', async () => {
+    const res = await deleteNoteById(new NextRequest(`${BASE}/nope`), {
+      params: { id: 'nope' },
+    });
+
+    expect(res.status).toBe(404);
+    const { error } = await res.json();
+    expect(error.code).toBe('NOTE_NOT_FOUND');
   });
 });
 

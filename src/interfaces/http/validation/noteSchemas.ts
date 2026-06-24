@@ -72,6 +72,14 @@ export const listNotesSchema = z.object({
       message: `sort must be one of: ${NOTE_SORT_OPTIONS.join(', ')}`,
     })
     .default(DEFAULT_SORT),
+  // Query values arrive as strings; accept the literal 'true'/'false' tokens and
+  // coerce to a boolean. Absent → defaults to false (archived notes hidden).
+  includeArchived: z
+    .enum(['true', 'false'], {
+      message: "includeArchived must be 'true' or 'false'",
+    })
+    .transform((value) => value === 'true')
+    .default(false),
 });
 
 /** Query params for GET /api/v1/notes/search (`q` is required, non-empty). */

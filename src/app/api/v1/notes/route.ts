@@ -3,7 +3,8 @@
  *
  * Collection endpoint for the Notes resource.
  *   - GET  → list notes (paginated/sorted via `?page=&limit=&sort=`,
- *            optionally filtered by `?tag=`)
+ *            optionally filtered by `?tag=`). Archived (soft-deleted) notes are
+ *            excluded by default; pass `?includeArchived=true` to include them.
  *   - POST → create a note
  *
  * Searching lives on its own endpoint (`GET /api/v1/notes/search?q=`).
@@ -33,6 +34,7 @@ export async function GET(request: NextRequest) {
     page: param('page'),
     limit: param('limit'),
     sort: param('sort'),
+    includeArchived: param('includeArchived'),
   });
   return toNextResponse(result);
 }

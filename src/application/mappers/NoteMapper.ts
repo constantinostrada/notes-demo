@@ -21,6 +21,7 @@ export class NoteMapper {
       wordCount: note.getWordCount(),
       createdAt: note.createdAt.toISOString(),
       updatedAt: note.updatedAt.toISOString(),
+      deletedAt: note.deletedAt ? note.deletedAt.toISOString() : null,
     };
   }
 

@@ -49,10 +49,12 @@ export class NoteController {
 
   static async listNotes(rawQuery?: unknown): Promise<ControllerResult> {
     try {
-      const { tag, page, limit, sort } = listNotesSchema.parse(rawQuery ?? {});
+      const { tag, includeArchived, page, limit, sort } = listNotesSchema.parse(
+        rawQuery ?? {}
+      );
 
       const useCase = container.getListNotesUseCase();
-      const result = await useCase.execute({ tag, page, limit, sort });
+      const result = await useCase.execute({ tag, includeArchived, page, limit, sort });
 
       return ok(result);
     } catch (error) {

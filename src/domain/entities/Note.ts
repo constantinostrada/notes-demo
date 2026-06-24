@@ -21,7 +21,9 @@ export class Note {
     private _content: string,
     tags: string[],
     private readonly _createdAt: Date,
-    private _updatedAt: Date
+    private _updatedAt: Date,
+    /** When set, the note is archived (soft-deleted); null means active. */
+    private _deletedAt: Date | null
   ) {
     this.validateTitle(this._title);
     this._tags = Note.normalizeTags(tags);
@@ -33,7 +35,7 @@ export class Note {
    */
   static create(id: string, title: string, content: string, tags: string[] = []): Note {
     const now = new Date();
-    return new Note(id, title, content, tags, now, now);
+    return new Note(id, title, content, tags, now, now, null);
   }
 
   /**
@@ -45,9 +47,10 @@ export class Note {
     content: string,
     tags: string[],
     createdAt: Date,
-    updatedAt: Date
+    updatedAt: Date,
+    deletedAt: Date | null = null
   ): Note {
-    return new Note(id, title, content, tags, createdAt, updatedAt);
+    return new Note(id, title, content, tags, createdAt, updatedAt, deletedAt);
   }
 
   /**
@@ -125,6 +128,27 @@ export class Note {
   }
 
   /**
+   * Archive the note (soft delete). Idempotent: archiving an already-archived
+   * note preserves the original archive time. Stamps `updatedAt` on first
+   * archive so the change is reflected in listings/sorting.
+   */
+  archive(): void {
+    if (this._deletedAt !== null) {
+      return;
+    }
+    const now = new Date();
+    this._deletedAt = now;
+    this._updatedAt = now;
+  }
+
+  /**
+   * Whether the note is archived (soft-deleted).
+   */
+  isArchived(): boolean {
+    return this._deletedAt !== null;
+  }
+
+  /**
    * Check if the note is empty (no content)
    */
   isEmpty(): boolean {
@@ -165,5 +189,10 @@ export class Note {
 
   get updatedAt(): Date {
     return this._updatedAt;
+  }
+
+  /** Archive timestamp, or null when the note is active. */
+  get deletedAt(): Date | null {
+    return this._deletedAt;
   }
 }

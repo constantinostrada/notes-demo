@@ -27,6 +27,7 @@ export class InMemoryNoteRepository implements INoteRepository {
       tags: note.tags,
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
+      deletedAt: note.deletedAt,
     };
 
     // Reconstitute to create a fresh instance
@@ -36,7 +37,8 @@ export class InMemoryNoteRepository implements INoteRepository {
       serialized.content,
       serialized.tags,
       serialized.createdAt,
-      serialized.updatedAt
+      serialized.updatedAt,
+      serialized.deletedAt
     );
 
     this.notes.set(note.id, persistedNote);
@@ -73,11 +75,14 @@ export class InMemoryNoteRepository implements INoteRepository {
   }
 
   async list(criteria: NoteListCriteria): Promise<NotePage> {
-    const { tag, page, limit, sortField, sortDirection } = criteria;
+    const { tag, includeArchived, page, limit, sortField, sortDirection } = criteria;
 
     // The tag arrives already normalized (see Note.normalizeTag); note.tags are
-    // stored in their canonical form too, so an exact match is correct.
-    const all = Array.from(this.notes.values());
+    // stored in their canonical form too, so an exact match is correct. Archived
+    // notes are excluded unless the caller explicitly opts in.
+    const all = Array.from(this.notes.values()).filter(
+      (note) => includeArchived || !note.isArchived()
+    );
     const filtered = tag ? all.filter((note) => note.tags.includes(tag)) : all;
 
     const sorted = filtered.sort((a, b) =>

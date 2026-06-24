@@ -26,6 +26,8 @@ export interface NoteOutputDTO {
   wordCount: number;
   createdAt: string;
   updatedAt: string;
+  /** ISO archive timestamp when the note is archived, otherwise null. */
+  deletedAt: string | null;
 }
 
 export interface DeleteNoteInputDTO {
@@ -67,6 +69,8 @@ export const DEFAULT_SORT: NoteSortOption = '-createdAt';
 export interface ListNotesInputDTO {
   /** Optional tag filter; when present, only notes with this tag are returned. */
   tag?: string;
+  /** Include archived (soft-deleted) notes in the listing (defaults to false). */
+  includeArchived?: boolean;
   /** 1-based page number (defaults to DEFAULT_PAGE). */
   page?: number;
   /** Page size (defaults to DEFAULT_LIMIT). */

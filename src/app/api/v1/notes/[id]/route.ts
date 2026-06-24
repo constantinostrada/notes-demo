@@ -4,7 +4,7 @@
  * Single-resource endpoint for the Notes resource.
  *   - GET    → retrieve a note by id
  *   - PUT    → update a note
- *   - DELETE → delete a note
+ *   - DELETE → archive a note (soft delete; returns 204)
  *
  * Like the collection route, this is a thin transport adapter that delegates
  * to the NoteController; response serialization (success, error envelope, and

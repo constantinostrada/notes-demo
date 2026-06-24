@@ -41,6 +41,7 @@ interface NoteRow {
   content: string;
   created_at: number; // epoch milliseconds
   updated_at: number; // epoch milliseconds
+  deleted_at: number | null; // epoch milliseconds; null when active (not archived)
 }
 
 /** Default location of the SQLite database file: `<project>/data/notes.db`. */
@@ -87,7 +88,8 @@ export class SqliteNoteRepository implements INoteRepository {
         title      TEXT    NOT NULL,
         content    TEXT    NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
-        updated_at INTEGER NOT NULL
+        updated_at INTEGER NOT NULL,
+        deleted_at INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes (created_at DESC);
 
@@ -102,6 +104,20 @@ export class SqliteNoteRepository implements INoteRepository {
       );
       CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags (tag);
     `);
+
+    // Soft-delete migration: databases created before the `deleted_at` column
+    // existed are upgraded in place (CREATE TABLE IF NOT EXISTS won't add it).
+    this.ensureDeletedAtColumn();
+  }
+
+  /** Add the nullable `deleted_at` column to legacy `notes` tables if missing. */
+  private ensureDeletedAtColumn(): void {
+    const columns = this.db.prepare('PRAGMA table_info(notes)').all() as {
+      name: string;
+    }[];
+    if (!columns.some((column) => column.name === 'deleted_at')) {
+      this.db.exec('ALTER TABLE notes ADD COLUMN deleted_at INTEGER');
+    }
   }
 
   async save(note: Note): Promise<void> {
@@ -110,12 +126,13 @@ export class SqliteNoteRepository implements INoteRepository {
     const persist = this.db.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO notes (id, title, content, created_at, updated_at)
-           VALUES (@id, @title, @content, @createdAt, @updatedAt)
+          `INSERT INTO notes (id, title, content, created_at, updated_at, deleted_at)
+           VALUES (@id, @title, @content, @createdAt, @updatedAt, @deletedAt)
            ON CONFLICT(id) DO UPDATE SET
              title      = excluded.title,
              content    = excluded.content,
-             updated_at = excluded.updated_at`
+             updated_at = excluded.updated_at,
+             deleted_at = excluded.deleted_at`
         )
         .run({
           id: note.id,
@@ -123,6 +140,7 @@ export class SqliteNoteRepository implements INoteRepository {
           content: note.content,
           createdAt: note.createdAt.getTime(),
           updatedAt: note.updatedAt.getTime(),
+          deletedAt: note.deletedAt ? note.deletedAt.getTime() : null,
         });
 
       // Replace-all keeps the tag set in sync on both create and update.
@@ -178,15 +196,23 @@ export class SqliteNoteRepository implements INoteRepository {
   }
 
   async list(criteria: NoteListCriteria): Promise<NotePage> {
-    const { tag, page, limit, sortField, sortDirection } = criteria;
+    const { tag, includeArchived, page, limit, sortField, sortDirection } = criteria;
     const offset = (page - 1) * limit;
     const orderExpr = ORDER_EXPR[sortField];
     const direction = sortDirection === 'desc' ? 'DESC' : 'ASC';
 
     // An optional tag filter joins the tag table; the (already-normalized) tag
-    // is matched exactly against the stored canonical form.
+    // is matched exactly against the stored canonical form. Archived notes are
+    // excluded (deleted_at IS NULL) unless the caller opts in.
     const joinClause = tag ? 'JOIN note_tags t ON t.note_id = n.id' : '';
-    const whereClause = tag ? 'WHERE t.tag = @tag' : '';
+    const conditions: string[] = [];
+    if (tag) {
+      conditions.push('t.tag = @tag');
+    }
+    if (!includeArchived) {
+      conditions.push('n.deleted_at IS NULL');
+    }
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const filterParams = tag ? { tag } : {};
 
     const { total } = this.db
@@ -222,7 +248,8 @@ export class SqliteNoteRepository implements INoteRepository {
       row.content,
       this.loadTags(row.id),
       new Date(row.created_at),
-      new Date(row.updated_at)
+      new Date(row.updated_at),
+      row.deleted_at !== null ? new Date(row.deleted_at) : null
     );
   }
 }

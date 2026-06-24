@@ -21,6 +21,8 @@ export type SortDirection = 'asc' | 'desc';
 export interface NoteListCriteria {
   /** Optional, already-normalized tag filter. */
   tag?: string;
+  /** When false (the default), archived (soft-deleted) notes are excluded. */
+  includeArchived: boolean;
   page: number;
   limit: number;
   sortField: NoteSortField;
@@ -52,8 +54,11 @@ export interface INoteRepository {
   findAll(): Promise<Note[]>;
 
   /**
-   * Delete a note by its ID
-   * Returns true if deleted, false if not found
+   * Permanently (hard) delete a note by its ID.
+   * Returns true if deleted, false if not found.
+   *
+   * Note: the public DELETE endpoint archives instead (soft delete via
+   * `Note.archive()` + `save`); this hard delete is kept for maintenance/tests.
    */
   delete(id: string): Promise<boolean>;
 
