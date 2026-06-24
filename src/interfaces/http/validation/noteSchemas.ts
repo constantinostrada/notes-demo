@@ -10,6 +10,13 @@
  */
 
 import { z } from 'zod';
+import {
+  NOTE_SORT_OPTIONS,
+  DEFAULT_PAGE,
+  DEFAULT_LIMIT,
+  MAX_LIMIT,
+  DEFAULT_SORT,
+} from '@/application/dtos/NoteDTO';
 
 /**
  * Tags payload: an optional array of strings. Shape-only — canonicalization
@@ -42,9 +49,29 @@ export const updateNoteSchema = z
     }
   );
 
-/** Query params for GET /api/v1/notes (`tag` is an optional filter). */
+/**
+ * Query params for GET /api/v1/notes — all optional, each with a sensible
+ * default. Values arrive as strings from the URL, so `page`/`limit` are coerced
+ * to integers and bounded; `sort` is constrained to the known tokens.
+ */
 export const listNotesSchema = z.object({
   tag: z.string().trim().min(1, { message: 'Tag filter cannot be empty' }).optional(),
+  page: z.coerce
+    .number({ message: 'page must be a number' })
+    .int({ message: 'page must be an integer' })
+    .min(1, { message: 'page must be >= 1' })
+    .default(DEFAULT_PAGE),
+  limit: z.coerce
+    .number({ message: 'limit must be a number' })
+    .int({ message: 'limit must be an integer' })
+    .min(1, { message: 'limit must be >= 1' })
+    .max(MAX_LIMIT, { message: `limit cannot exceed ${MAX_LIMIT}` })
+    .default(DEFAULT_LIMIT),
+  sort: z
+    .enum(NOTE_SORT_OPTIONS, {
+      message: `sort must be one of: ${NOTE_SORT_OPTIONS.join(', ')}`,
+    })
+    .default(DEFAULT_SORT),
 });
 
 /** Query params for GET /api/v1/notes/search (`q` is required, non-empty). */

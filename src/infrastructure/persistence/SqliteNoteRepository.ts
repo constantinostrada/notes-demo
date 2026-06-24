@@ -16,7 +16,23 @@ import path from 'path';
 import Database from 'better-sqlite3';
 
 import { Note } from '@/domain/entities/Note';
-import { INoteRepository } from '@/domain/repositories/INoteRepository';
+import {
+  INoteRepository,
+  NoteListCriteria,
+  NotePage,
+  NoteSortField,
+} from '@/domain/repositories/INoteRepository';
+
+/**
+ * Whitelisted ORDER BY expressions per sort field. Mapping through this constant
+ * (never interpolating caller input) keeps the dynamic ORDER BY injection-safe.
+ * Titles sort case-insensitively via COLLATE NOCASE.
+ */
+const ORDER_EXPR: Record<NoteSortField, string> = {
+  createdAt: 'n.created_at',
+  updatedAt: 'n.updated_at',
+  title: 'n.title COLLATE NOCASE',
+};
 
 /** Internal shape of a `notes` table row. Never exported / never leaked. */
 interface NoteRow {
@@ -161,18 +177,33 @@ export class SqliteNoteRepository implements INoteRepository {
     return rows.map((row) => this.toEntity(row));
   }
 
-  async findByTag(tag: string): Promise<Note[]> {
-    // The tag arrives already normalized (see Note.normalizeTag); match it
-    // exactly against the stored canonical form.
+  async list(criteria: NoteListCriteria): Promise<NotePage> {
+    const { tag, page, limit, sortField, sortDirection } = criteria;
+    const offset = (page - 1) * limit;
+    const orderExpr = ORDER_EXPR[sortField];
+    const direction = sortDirection === 'desc' ? 'DESC' : 'ASC';
+
+    // An optional tag filter joins the tag table; the (already-normalized) tag
+    // is matched exactly against the stored canonical form.
+    const joinClause = tag ? 'JOIN note_tags t ON t.note_id = n.id' : '';
+    const whereClause = tag ? 'WHERE t.tag = @tag' : '';
+    const filterParams = tag ? { tag } : {};
+
+    const { total } = this.db
+      .prepare(`SELECT COUNT(*) AS total FROM notes n ${joinClause} ${whereClause}`)
+      .get(filterParams) as { total: number };
+
+    // `orderExpr`/`direction` come from a fixed whitelist (never raw input);
+    // `n.id` is a stable tiebreaker so equal keys page deterministically.
     const rows = this.db
       .prepare(
-        `SELECT n.* FROM notes n
-         JOIN note_tags t ON t.note_id = n.id
-         WHERE t.tag = ?
-         ORDER BY n.created_at DESC`
+        `SELECT n.* FROM notes n ${joinClause} ${whereClause}
+         ORDER BY ${orderExpr} ${direction}, n.id ASC
+         LIMIT @limit OFFSET @offset`
       )
-      .all(tag) as NoteRow[];
-    return rows.map((row) => this.toEntity(row));
+      .all({ ...filterParams, limit, offset }) as NoteRow[];
+
+    return { notes: rows.map((row) => this.toEntity(row)), total };
   }
 
   /** Load a note's tags in stable (alphabetical) order. */

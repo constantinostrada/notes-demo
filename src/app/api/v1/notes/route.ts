@@ -2,7 +2,8 @@
  * Next.js API Route: /api/v1/notes
  *
  * Collection endpoint for the Notes resource.
- *   - GET  → list all notes (optionally filtered by `?tag=`)
+ *   - GET  → list notes (paginated/sorted via `?page=&limit=&sort=`,
+ *            optionally filtered by `?tag=`)
  *   - POST → create a note
  *
  * Searching lives on its own endpoint (`GET /api/v1/notes/search?q=`).
@@ -18,10 +19,21 @@ import { NoteController } from '@/interfaces/http/controllers/NoteController';
 import { toNextResponse } from '@/interfaces/http/apiResponse';
 
 export async function GET(request: NextRequest) {
-  // `?tag=` filters the list; absent → list everything. Normalize null→undefined
-  // so the optional query schema sees "not provided" rather than an invalid null.
-  const tag = request.nextUrl.searchParams.get('tag') ?? undefined;
-  const result = await NoteController.listNotes(tag);
+  // Forward the listing query params (pagination, sort, tag filter). Absent or
+  // empty values become `undefined` so the schema applies its defaults rather
+  // than choking on `null`/`""`.
+  const params = request.nextUrl.searchParams;
+  const param = (key: string): string | undefined => {
+    const value = params.get(key);
+    return value === null || value === '' ? undefined : value;
+  };
+
+  const result = await NoteController.listNotes({
+    tag: param('tag'),
+    page: param('page'),
+    limit: param('limit'),
+    sort: param('sort'),
+  });
   return toNextResponse(result);
 }
 

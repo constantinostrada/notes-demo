@@ -7,6 +7,32 @@
 
 import { Note } from '../entities/Note';
 
+/** Fields a note listing can be ordered by. */
+export type NoteSortField = 'createdAt' | 'updatedAt' | 'title';
+
+/** Sort direction for a note listing. */
+export type SortDirection = 'asc' | 'desc';
+
+/**
+ * Criteria for a paginated, sorted (and optionally tag-filtered) listing.
+ * `page` is 1-based and `limit` is the page size; both are expected to be
+ * already-validated positive integers (bounds are enforced at the edge).
+ */
+export interface NoteListCriteria {
+  /** Optional, already-normalized tag filter. */
+  tag?: string;
+  page: number;
+  limit: number;
+  sortField: NoteSortField;
+  sortDirection: SortDirection;
+}
+
+/** A single page of notes plus the total number of matches (ignoring paging). */
+export interface NotePage {
+  notes: Note[];
+  total: number;
+}
+
 export interface INoteRepository {
   /**
    * Save a note (create or update)
@@ -42,8 +68,9 @@ export interface INoteRepository {
   search(query: string): Promise<Note[]>;
 
   /**
-   * Find all notes that carry the given (already-normalized) tag.
-   * Returns empty array if none match.
+   * List notes with pagination, sorting and an optional tag filter.
+   * Returns the requested page together with the total number of matches
+   * (so callers can compute pagination metadata).
    */
-  findByTag(tag: string): Promise<Note[]>;
+  list(criteria: NoteListCriteria): Promise<NotePage>;
 }

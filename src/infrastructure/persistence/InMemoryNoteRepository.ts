@@ -7,7 +7,13 @@
  */
 
 import { Note } from '@/domain/entities/Note';
-import { INoteRepository } from '@/domain/repositories/INoteRepository';
+import {
+  INoteRepository,
+  NoteListCriteria,
+  NotePage,
+  NoteSortField,
+  SortDirection,
+} from '@/domain/repositories/INoteRepository';
 
 export class InMemoryNoteRepository implements INoteRepository {
   private notes: Map<string, Note> = new Map();
@@ -66,11 +72,23 @@ export class InMemoryNoteRepository implements INoteRepository {
     );
   }
 
-  async findByTag(tag: string): Promise<Note[]> {
+  async list(criteria: NoteListCriteria): Promise<NotePage> {
+    const { tag, page, limit, sortField, sortDirection } = criteria;
+
     // The tag arrives already normalized (see Note.normalizeTag); note.tags are
     // stored in their canonical form too, so an exact match is correct.
-    const allNotes = await this.findAll();
-    return allNotes.filter((note) => note.tags.includes(tag));
+    const all = Array.from(this.notes.values());
+    const filtered = tag ? all.filter((note) => note.tags.includes(tag)) : all;
+
+    const sorted = filtered.sort((a, b) =>
+      compareNotes(a, b, sortField, sortDirection)
+    );
+
+    const offset = (page - 1) * limit;
+    return {
+      notes: sorted.slice(offset, offset + limit),
+      total: sorted.length,
+    };
   }
 
   // Utility method for testing/development
@@ -82,4 +100,34 @@ export class InMemoryNoteRepository implements INoteRepository {
   size(): number {
     return this.notes.size;
   }
+}
+
+/**
+ * Compare two notes by the requested field/direction. Titles compare
+ * case-insensitively; `id` is a stable tiebreaker so equal keys order
+ * deterministically (mirrors the SQLite repository's ORDER BY).
+ */
+function compareNotes(
+  a: Note,
+  b: Note,
+  field: NoteSortField,
+  direction: SortDirection
+): number {
+  let cmp: number;
+  switch (field) {
+    case 'title':
+      cmp = a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
+      break;
+    case 'updatedAt':
+      cmp = a.updatedAt.getTime() - b.updatedAt.getTime();
+      break;
+    case 'createdAt':
+    default:
+      cmp = a.createdAt.getTime() - b.createdAt.getTime();
+      break;
+  }
+  if (cmp === 0) {
+    cmp = a.id.localeCompare(b.id);
+  }
+  return direction === 'desc' ? -cmp : cmp;
 }

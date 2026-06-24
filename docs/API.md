@@ -118,10 +118,22 @@ implementation backs the use cases.
 ### List All Notes
 
 ```http
-GET /api/v1/notes
+GET /api/v1/notes?page=1&limit=20&sort=-createdAt&tag=work
 ```
 
-**Response (200)**
+**Query Parameters** — all optional, each with a sensible default:
+
+| Param   | Type   | Default       | Notes                                                                 |
+| ------- | ------ | ------------- | --------------------------------------------------------------------- |
+| `page`  | int    | `1`           | 1-based page number. Must be `>= 1`.                                   |
+| `limit` | int    | `20`          | Page size. Must be between `1` and `100`.                             |
+| `sort`  | enum   | `-createdAt`  | One of `createdAt`, `-createdAt`, `updatedAt`, `-updatedAt`, `title`, `-title`. A leading `-` means **descending**; `title` sorts case-insensitively. |
+| `tag`   | string | _(none)_      | Filters to notes carrying this tag (matched case-insensitively).      |
+
+Invalid params (e.g. `page=0`, `limit=999`, `sort=bogus`) are rejected with
+`400 VALIDATION_ERROR` and per-field `details`.
+
+**Response (200)** — a page of notes plus pagination metadata:
 ```json
 {
   "data": {
@@ -130,15 +142,29 @@ GET /api/v1/notes
         "id": "uuid",
         "title": "Note Title",
         "content": "Note content...",
+        "tags": ["work"],
         "wordCount": 42,
         "createdAt": "2024-01-01T00:00:00.000Z",
         "updatedAt": "2024-01-01T00:00:00.000Z"
       }
     ],
-    "total": 1
+    "pagination": {
+      "page": 1,
+      "limit": 20,
+      "total": 1,
+      "totalPages": 1,
+      "hasNextPage": false,
+      "hasPreviousPage": false,
+      "sort": "-createdAt"
+    }
   }
 }
 ```
+
+- `total` — total notes matching the (optional) tag filter, ignoring pagination.
+- `totalPages` — `ceil(total / limit)` (`0` when there are no matches).
+- `hasNextPage` / `hasPreviousPage` — convenience flags for paging UIs.
+- `sort` — echoes the effective sort token applied.
 
 ### Search Notes
 
@@ -321,6 +347,16 @@ curl -X POST http://localhost:3000/api/v1/notes \
 **List all notes:**
 ```bash
 curl http://localhost:3000/api/v1/notes
+```
+
+**List notes — paginated & sorted (page 2, 10 per page, title A→Z):**
+```bash
+curl "http://localhost:3000/api/v1/notes?page=2&limit=10&sort=title"
+```
+
+**List notes — filtered by tag, newest first:**
+```bash
+curl "http://localhost:3000/api/v1/notes?tag=work&sort=-createdAt"
 ```
 
 **Get a specific note:**

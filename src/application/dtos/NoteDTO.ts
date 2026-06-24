@@ -40,12 +40,58 @@ export interface SearchNotesInputDTO {
   query: string;
 }
 
+/**
+ * Listing knobs shared by the interface (validation/defaults) and the use case.
+ *
+ * `sort` is a single token: a sort field optionally prefixed with `-` for
+ * descending order (e.g. `createdAt`, `-createdAt`, `title`). Keeping the
+ * allowed tokens here lets the zod schema and the use case agree on one source.
+ */
+export const NOTE_SORT_OPTIONS = [
+  'createdAt',
+  '-createdAt',
+  'updatedAt',
+  '-updatedAt',
+  'title',
+  '-title',
+] as const;
+
+export type NoteSortOption = (typeof NOTE_SORT_OPTIONS)[number];
+
+/** Sensible listing defaults / bounds (newest-first, 20 per page, cap 100). */
+export const DEFAULT_PAGE = 1;
+export const DEFAULT_LIMIT = 20;
+export const MAX_LIMIT = 100;
+export const DEFAULT_SORT: NoteSortOption = '-createdAt';
+
 export interface ListNotesInputDTO {
   /** Optional tag filter; when present, only notes with this tag are returned. */
   tag?: string;
+  /** 1-based page number (defaults to DEFAULT_PAGE). */
+  page?: number;
+  /** Page size (defaults to DEFAULT_LIMIT). */
+  limit?: number;
+  /** Sort token (defaults to DEFAULT_SORT). */
+  sort?: string;
 }
 
 export interface ListNotesOutputDTO {
   notes: NoteOutputDTO[];
   total: number;
+}
+
+/** Pagination metadata returned alongside a page of notes. */
+export interface PaginationMetaDTO {
+  page: number;
+  limit: number;
+  total: number;
+  totalPages: number;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  sort: string;
+}
+
+export interface PaginatedNotesOutputDTO {
+  notes: NoteOutputDTO[];
+  pagination: PaginationMetaDTO;
 }
