@@ -1,0 +1,161 @@
+import { NextRequest } from 'next/server';
+import { beforeEach, describe, expect, it } from 'vitest';
+
+import { container } from '@/infrastructure/di/container';
+import { GET as listNotes, POST as createNote } from '@/app/api/v1/notes/route';
+import { GET as getNoteById } from '@/app/api/v1/notes/[id]/route';
+import { GET as searchNotes } from '@/app/api/v1/notes/search/route';
+
+/**
+ * Integration tests for the Notes HTTP API.
+ *
+ * These drive the *real* Next.js route handlers end to end — through the
+ * controller, validation (zod), the use cases, and the SQLite repository. The
+ * repository runs against an in-process `:memory:` database (configured via
+ * SQLITE_DB_PATH in vitest.config.ts), so the tests hit real SQL without
+ * touching the on-disk `data/notes.db`.
+ *
+ * Covered endpoints:
+ *   - POST   /api/v1/notes            (create)
+ *   - GET    /api/v1/notes/:id        (read one)
+ *   - GET    /api/v1/notes            (list / paginate / filter)
+ *   - GET    /api/v1/notes/search     (search)
+ */
+
+const BASE = 'http://localhost/api/v1/notes';
+
+/** Build a POST/PUT request with a JSON body. */
+function jsonRequest(url: string, method: string, body: unknown): NextRequest {
+  return new NextRequest(url, {
+    method,
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+}
+
+/** POST a note and return the parsed `data` payload (asserts 201). */
+async function postNote(body: unknown) {
+  const res = await createNote(jsonRequest(BASE, 'POST', body));
+  expect(res.status).toBe(201);
+  const json = await res.json();
+  return json.data;
+}
+
+// The DI container caches a single repository on globalThis, and the exported
+// `container` is the very same instance the route handlers use. Wiping its rows
+// between tests gives each test an isolated, empty database.
+beforeEach(async () => {
+  const repository = container.getNoteRepository();
+  for (const note of await repository.findAll()) {
+    await repository.delete(note.id);
+  }
+});
+
+describe('POST /api/v1/notes + GET /api/v1/notes/:id', () => {
+  it('creates a note and reads it back by id', async () => {
+    const created = await postNote({
+      title: 'Integration note',
+      content: 'persisted through real SQL',
+      tags: ['Demo', 'demo'],
+    });
+
+    expect(created.id).toBeTruthy();
+    expect(created.title).toBe('Integration note');
+    expect(created.tags).toEqual(['demo']); // normalized + de-duplicated
+
+    const res = await getNoteById(new NextRequest(`${BASE}/${created.id}`), {
+      params: { id: created.id },
+    });
+    expect(res.status).toBe(200);
+
+    const { data } = await res.json();
+    expect(data).toEqual(created);
+  });
+
+  it('returns 404 with a NOTE_NOT_FOUND error for an unknown id', async () => {
+    const res = await getNoteById(new NextRequest(`${BASE}/does-not-exist`), {
+      params: { id: 'does-not-exist' },
+    });
+
+    expect(res.status).toBe(404);
+    const { error } = await res.json();
+    expect(error.code).toBe('NOTE_NOT_FOUND');
+  });
+
+  it('returns 400 VALIDATION_ERROR when the title is missing', async () => {
+    const res = await createNote(jsonRequest(BASE, 'POST', { content: 'no title' }));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+    expect(error.details).toBeInstanceOf(Array);
+  });
+});
+
+describe('GET /api/v1/notes (list)', () => {
+  it('lists notes with pagination metadata and a tag filter', async () => {
+    await postNote({ title: 'Alpha', content: 'a', tags: ['work'] });
+    await postNote({ title: 'Beta', content: 'b', tags: ['work'] });
+    await postNote({ title: 'Gamma', content: 'c', tags: ['home'] });
+
+    // First page, 2 per page, sorted by title ascending.
+    const res = await listNotes(
+      new NextRequest(`${BASE}?page=1&limit=2&sort=title`)
+    );
+    expect(res.status).toBe(200);
+
+    const { data } = await res.json();
+    expect(data.notes.map((n: { title: string }) => n.title)).toEqual([
+      'Alpha',
+      'Beta',
+    ]);
+    expect(data.pagination).toMatchObject({
+      page: 1,
+      limit: 2,
+      total: 3,
+      totalPages: 2,
+      hasNextPage: true,
+      hasPreviousPage: false,
+    });
+
+    // Tag filter narrows the result set.
+    const filtered = await listNotes(new NextRequest(`${BASE}?tag=home`));
+    const filteredJson = await filtered.json();
+    expect(filteredJson.data.pagination.total).toBe(1);
+    expect(filteredJson.data.notes[0].title).toBe('Gamma');
+  });
+
+  it('rejects an out-of-range limit with 400 VALIDATION_ERROR', async () => {
+    const res = await listNotes(new NextRequest(`${BASE}?limit=9999`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('GET /api/v1/notes/search', () => {
+  it('finds notes matching the query in title or content', async () => {
+    await postNote({ title: 'Grocery list', content: 'buy milk' });
+    await postNote({ title: 'Book notes', content: 'milk frother review' });
+    await postNote({ title: 'Unrelated', content: 'nothing relevant' });
+
+    const res = await searchNotes(new NextRequest(`${BASE}/search?q=milk`));
+    expect(res.status).toBe(200);
+
+    const { data } = await res.json();
+    expect(data.total).toBe(2);
+    expect(data.notes.map((n: { title: string }) => n.title).sort()).toEqual([
+      'Book notes',
+      'Grocery list',
+    ]);
+  });
+
+  it('returns 400 VALIDATION_ERROR when q is missing', async () => {
+    const res = await searchNotes(new NextRequest(`${BASE}/search`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+});

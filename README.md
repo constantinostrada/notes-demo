@@ -54,6 +54,64 @@ Open [http://localhost:3000](http://localhost:3000) with your browser to see the
 - `npm run start` - Start production server
 - `npm run lint` - Run ESLint
 - `npm run type-check` - Run TypeScript type checking
+- `npm test` - Run the test suite once (unit + integration)
+- `npm run test:watch` - Run the tests in watch mode
+
+## Testing
+
+### Runner: Vitest
+
+Tests run on [**Vitest**](https://vitest.dev/). It was chosen because it runs
+TypeScript and ESM out of the box, honours the project's `@/*` path aliases with
+a one-line config, and needs no extra transform/babel setup to exercise the
+Next.js route handlers — so the whole suite runs from a single command.
+
+Run everything once:
+
+```bash
+npm test
+```
+
+Or in watch mode while developing:
+
+```bash
+npm run test:watch
+```
+
+### Layout
+
+```
+tests/
+├── unit/           # Use-case tests, run against the InMemoryNoteRepository
+│   ├── CreateNoteUseCase.test.ts
+│   ├── GetNoteUseCase.test.ts
+│   ├── ListNotesUseCase.test.ts
+│   └── SearchNotesUseCase.test.ts
+└── integration/    # HTTP endpoint tests, run against a :memory: SQLite database
+    └── notesApi.test.ts
+```
+
+### What's covered
+
+- **Unit tests** for the `create` / `get` / `list` / `search` use cases. Each
+  use case is driven through the `INoteRepository` interface using the
+  in-memory implementation, so the tests are fast and storage-agnostic. They
+  cover the happy paths plus the key edge cases (validation failures, tag
+  normalization/de-duplication, pagination metadata, sorting, tag filtering,
+  and not-found handling).
+
+- **Integration tests** that call the real Next.js route handlers end to end —
+  through the controller, zod validation, the use cases, and the **SQLite**
+  repository. They cover four endpoints:
+  `POST /api/v1/notes`, `GET /api/v1/notes/:id`, `GET /api/v1/notes`, and
+  `GET /api/v1/notes/search`, including their `400`/`404` error envelopes.
+
+### Test database
+
+Integration tests never touch the real `data/notes.db` file. `vitest.config.ts`
+sets `SQLITE_DB_PATH=:memory:`, which makes the DI container open an ephemeral,
+in-process SQLite database for the test run. Each test starts from a clean slate
+(the shared repository's rows are wiped in a `beforeEach`).
 
 ## Clean Architecture Layers
 
