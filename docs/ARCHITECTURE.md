@@ -140,10 +140,13 @@ export class CreateNoteUseCase {
 
 **Contents**:
 - **Repository Implementations** (`persistence/`): Real data storage
-  - Example: `InMemoryNoteRepository`, `PostgresNoteRepository`
-- **Database Clients** (`persistence/`): ORM config, migrations
+  - `SqliteNoteRepository` — the registered default (file-backed, persistent)
+  - `InMemoryNoteRepository` — lightweight test/dev double
+- **Database Clients** (`persistence/`): connection setup, schema bootstrap
 - **External Services** (`external/`): HTTP clients, API wrappers
 - **Dependency Injection** (`di/`): Container that wires everything together
+
+See [Storage](#storage-sqlite) for the storage decision and where the DB lives.
 
 **Rules**:
 - ✅ Can import: Domain, Application, and third-party libraries
@@ -237,7 +240,7 @@ export class NoteController {
    ↓
 6. Use Case calls Repository (domain/repositories/INoteRepository.ts interface)
    ↓
-7. Repository Implementation saves (infrastructure/persistence/InMemoryNoteRepository.ts)
+7. Repository Implementation saves (infrastructure/persistence/SqliteNoteRepository.ts)
    ↓
 8. Use Case returns DTO (application/dtos/NoteDTO.ts)
    ↓
@@ -253,7 +256,7 @@ Dependencies are wired together in `src/infrastructure/di/container.ts`:
 ```typescript
 class DIContainer {
   getNoteRepository(): INoteRepository {
-    return new InMemoryNoteRepository(); // Can swap for PostgresNoteRepository
+    return new SqliteNoteRepository(); // Swap here for Postgres, etc.
   }
   
   getCreateNoteUseCase(): CreateNoteUseCase {
@@ -263,9 +266,34 @@ class DIContainer {
 ```
 
 This allows swapping implementations without changing business logic:
-- Use `InMemoryNoteRepository` for development
-- Use `PostgresNoteRepository` for production
-- Use `MockNoteRepository` for testing
+- `SqliteNoteRepository` — registered default (persistent, file-backed)
+- `InMemoryNoteRepository` — fast, ephemeral double for tests
+- A future `PostgresNoteRepository` would only change this one line
+
+## Storage (SQLite)
+
+**Decision**: the app persists notes in a local **SQLite** database via
+[`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) (a fast,
+synchronous, zero-server driver). SQLite needs no external service, keeps the
+demo self-contained, and gives real durability across restarts.
+
+**Where the DB lives**: a single file at **`data/notes.db`** (project root),
+created automatically on first run along with its parent directory. The path is
+configurable via the `SQLITE_DB_PATH` environment variable; set it to
+`:memory:` for an ephemeral database (handy in tests). The `data/` directory and
+`*.db` files are git-ignored.
+
+**Schema**: the `notes` table is created automatically (`CREATE TABLE IF NOT
+EXISTS`) when the repository is first constructed — there is no separate
+migration step. Timestamps are stored as epoch-millisecond integers and mapped
+back to `Date`s when reconstituting domain entities.
+
+**Boundary**: all SQL lives inside `SqliteNoteRepository`. It maps domain
+`Note` entities → rows on write and rows → entities (via `Note.reconstitute`)
+on read. No SQL, rows, or the database handle ever cross into the
+`application/` or `domain/` layers, so those layers remain unaware that SQLite
+is used at all. (`better-sqlite3` is a native module, so it's marked as an
+external server package in `next.config.js`.)
 
 ## Benefits
 

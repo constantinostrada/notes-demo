@@ -428,9 +428,9 @@ export class PostgresNoteRepository implements INoteRepository {
 ```typescript
 // src/infrastructure/di/container.ts
 getNoteRepository(): INoteRepository {
-  // Before:
-  // return new InMemoryNoteRepository();
-  
+  // Before (registered default):
+  // return new SqliteNoteRepository();
+
   // After:
   return new PostgresNoteRepository(this.getDbPool());
 }

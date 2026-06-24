@@ -139,8 +139,8 @@ CreateNoteUseCase receives title and content, creates Note entity, saves via rep
 
 ### Infrastructure Layer
 ```typescript
-// Repository implementation
-InMemoryNoteRepository implements INoteRepository with actual data storage
+// Repository implementation (persistent SQLite, registered in the DI container)
+SqliteNoteRepository implements INoteRepository, storing notes in data/notes.db
 ```
 
 ### Interfaces Layer

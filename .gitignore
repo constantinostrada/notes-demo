@@ -15,6 +15,12 @@
 # production
 /build
 
+# local SQLite database (and WAL/SHM sidecar files)
+/data
+*.db
+*.db-wal
+*.db-shm
+
 # misc
 .DS_Store
 *.pem

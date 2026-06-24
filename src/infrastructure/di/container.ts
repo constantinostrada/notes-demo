@@ -6,7 +6,7 @@
  */
 
 import { INoteRepository } from '@/domain/repositories/INoteRepository';
-import { InMemoryNoteRepository } from '../persistence/InMemoryNoteRepository';
+import { SqliteNoteRepository } from '../persistence/SqliteNoteRepository';
 import { CreateNoteUseCase } from '@/application/use-cases/CreateNoteUseCase';
 import { GetNoteUseCase } from '@/application/use-cases/GetNoteUseCase';
 import { ListNotesUseCase } from '@/application/use-cases/ListNotesUseCase';
@@ -15,19 +15,20 @@ import { DeleteNoteUseCase } from '@/application/use-cases/DeleteNoteUseCase';
 import { SearchNotesUseCase } from '@/application/use-cases/SearchNotesUseCase';
 
 /**
- * Only the *stateful* repository is cached on `globalThis`.
+ * The repository is cached on `globalThis`.
  *
  * Next.js re-evaluates route modules between requests (and on every HMR reload
- * in dev), which would otherwise rebuild the in-memory repository on each
- * request, losing all data. Pinning the repository to the global object keeps a
- * single store alive for the whole server process.
+ * in dev). Caching the repository on the global object keeps a single
+ * SQLite connection alive for the whole server process instead of reopening the
+ * database file on each request/reload.
  *
  * We deliberately cache ONLY the repository, not the whole container: the
  * container, use cases, and exception classes are rebuilt per evaluation so
  * their class identity stays consistent within a request (e.g. so
- * `error instanceof NoteNotFoundException` works in the controller). In-memory
- * persistence is a demo concern; a real database repository removes the need
- * for this entirely.
+ * `error instanceof NoteNotFoundException` works in the controller).
+ *
+ * Data itself lives in SQLite (see SqliteNoteRepository), so it persists across
+ * restarts regardless of this in-memory cache.
  */
 const globalStore = globalThis as typeof globalThis & {
   __notesRepository?: INoteRepository;
@@ -35,7 +36,7 @@ const globalStore = globalThis as typeof globalThis & {
 
 function getOrCreateNoteRepository(): INoteRepository {
   if (!globalStore.__notesRepository) {
-    globalStore.__notesRepository = new InMemoryNoteRepository();
+    globalStore.__notesRepository = new SqliteNoteRepository();
   }
   return globalStore.__notesRepository;
 }

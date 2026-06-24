@@ -1,0 +1,155 @@
+/**
+ * Infrastructure: SQLite Note Repository
+ *
+ * Real, file-backed implementation of INoteRepository using better-sqlite3.
+ * Data survives process restarts (the demo's default storage).
+ *
+ * The repository is the ONLY place that knows about SQL or table columns:
+ *   - It maps domain `Note` entities → rows on write.
+ *   - It maps rows → domain `Note` entities on read (via `Note.reconstitute`).
+ * Nothing SQL-shaped (rows, statements, the Database handle) ever leaves this
+ * module, so the domain/application layers stay storage-agnostic.
+ */
+
+import fs from 'fs';
+import path from 'path';
+import Database from 'better-sqlite3';
+
+import { Note } from '@/domain/entities/Note';
+import { INoteRepository } from '@/domain/repositories/INoteRepository';
+
+/** Internal shape of a `notes` table row. Never exported / never leaked. */
+interface NoteRow {
+  id: string;
+  title: string;
+  content: string;
+  created_at: number; // epoch milliseconds
+  updated_at: number; // epoch milliseconds
+}
+
+/** Default location of the SQLite database file: `<project>/data/notes.db`. */
+export const DEFAULT_DB_PATH = path.join(process.cwd(), 'data', 'notes.db');
+
+/**
+ * Resolve where the database lives. Override with the `SQLITE_DB_PATH` env var
+ * (e.g. `:memory:` for tests). Storage config belongs in infrastructure.
+ */
+export function resolveDbPath(): string {
+  return process.env.SQLITE_DB_PATH || DEFAULT_DB_PATH;
+}
+
+/**
+ * Open (and if needed create) the notes database, ensuring its parent
+ * directory exists and applying sensible pragmas. Returns a ready connection.
+ */
+export function openNotesDatabase(dbPath: string = resolveDbPath()): Database.Database {
+  // better-sqlite3 won't create missing parent directories — do it ourselves.
+  if (dbPath !== ':memory:') {
+    fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+  }
+
+  const db = new Database(dbPath);
+  // WAL improves read/write concurrency; foreign_keys is good hygiene.
+  db.pragma('journal_mode = WAL');
+  db.pragma('foreign_keys = ON');
+  return db;
+}
+
+export class SqliteNoteRepository implements INoteRepository {
+  private readonly db: Database.Database;
+
+  constructor(db: Database.Database = openNotesDatabase()) {
+    this.db = db;
+    this.initSchema();
+  }
+
+  /** Create the table (and index) automatically if they don't exist yet. */
+  private initSchema(): void {
+    this.db.exec(`
+      CREATE TABLE IF NOT EXISTS notes (
+        id         TEXT    PRIMARY KEY,
+        title      TEXT    NOT NULL,
+        content    TEXT    NOT NULL DEFAULT '',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes (created_at DESC);
+    `);
+  }
+
+  async save(note: Note): Promise<void> {
+    // Upsert: insert on create, update mutable fields on conflict. We never
+    // overwrite created_at so the original creation time is preserved.
+    this.db
+      .prepare(
+        `INSERT INTO notes (id, title, content, created_at, updated_at)
+         VALUES (@id, @title, @content, @createdAt, @updatedAt)
+         ON CONFLICT(id) DO UPDATE SET
+           title      = excluded.title,
+           content    = excluded.content,
+           updated_at = excluded.updated_at`
+      )
+      .run({
+        id: note.id,
+        title: note.title,
+        content: note.content,
+        createdAt: note.createdAt.getTime(),
+        updatedAt: note.updatedAt.getTime(),
+      });
+  }
+
+  async findById(id: string): Promise<Note | null> {
+    const row = this.db.prepare('SELECT * FROM notes WHERE id = ?').get(id) as
+      | NoteRow
+      | undefined;
+    return row ? this.toEntity(row) : null;
+  }
+
+  async findAll(): Promise<Note[]> {
+    const rows = this.db
+      .prepare('SELECT * FROM notes ORDER BY created_at DESC')
+      .all() as NoteRow[];
+    return rows.map((row) => this.toEntity(row));
+  }
+
+  async delete(id: string): Promise<boolean> {
+    const info = this.db.prepare('DELETE FROM notes WHERE id = ?').run(id);
+    return info.changes > 0;
+  }
+
+  async exists(id: string): Promise<boolean> {
+    const row = this.db.prepare('SELECT 1 FROM notes WHERE id = ? LIMIT 1').get(id);
+    return row !== undefined;
+  }
+
+  async search(query: string): Promise<Note[]> {
+    // Case-insensitive substring match on title or content. LIKE is
+    // case-insensitive for ASCII in SQLite; escape user wildcards so a literal
+    // `%`/`_` doesn't act as a pattern.
+    const pattern = `%${escapeLike(query)}%`;
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM notes
+         WHERE title LIKE @pattern ESCAPE '\\' OR content LIKE @pattern ESCAPE '\\'
+         ORDER BY created_at DESC`
+      )
+      .all({ pattern }) as NoteRow[];
+    return rows.map((row) => this.toEntity(row));
+  }
+
+  /** Map a persistence row back into a domain entity. */
+  private toEntity(row: NoteRow): Note {
+    return Note.reconstitute(
+      row.id,
+      row.title,
+      row.content,
+      new Date(row.created_at),
+      new Date(row.updated_at)
+    );
+  }
+}
+
+/** Escape LIKE special characters (`\`, `%`, `_`) for use with ESCAPE '\'. */
+function escapeLike(input: string): string {
+  return input.replace(/[\\%_]/g, (char) => `\\${char}`);
+}

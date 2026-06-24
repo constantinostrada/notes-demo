@@ -46,7 +46,8 @@ notes-demo/
 │   │
 │   ├── infrastructure/           # 🟡 INFRASTRUCTURE LAYER (I/O)
 │   │   ├── persistence/
-│   │   │   └── InMemoryNoteRepository.ts # Repository implementation
+│   │   │   ├── SqliteNoteRepository.ts   # Repository implementation (registered, persistent)
+│   │   │   └── InMemoryNoteRepository.ts # Repository implementation (test/dev double)
 │   │   ├── di/
 │   │   │   └── container.ts      # Dependency injection container
 │   │   └── CLAUDE.md             # Infrastructure layer rules (pre-existing)
@@ -111,11 +112,12 @@ notes-demo/
   - `NoteDTO.ts` - Input/Output contracts
   - `NoteMapper.ts` - Entity to DTO conversion
 
-### 🟡 Infrastructure Layer (2 files)
+### 🟡 Infrastructure Layer
 - **Purpose**: Implement interfaces, handle I/O
 - **Imports**: Domain + Application + third-party libs
 - **Files**:
-  - `InMemoryNoteRepository.ts` - Repository implementation
+  - `SqliteNoteRepository.ts` - Repository implementation (registered, persists to `data/notes.db`)
+  - `InMemoryNoteRepository.ts` - Repository implementation (test/dev double)
   - `container.ts` - Dependency injection setup
 
 ### 🟠 Interfaces Layer (7 files)
@@ -231,7 +233,7 @@ Plus:
 
 To extend this project:
 
-1. **Add persistence**: Replace `InMemoryNoteRepository` with `PostgresNoteRepository`
+1. **Scale persistence**: Notes already persist to SQLite (`SqliteNoteRepository`); swap it for a `PostgresNoteRepository` to scale out
 2. **Add authentication**: Create `User` entity and authentication use cases
 3. **Add tags**: Follow the example in `docs/EXAMPLES.md`
 4. **Add tests**: Start with domain tests, then use cases

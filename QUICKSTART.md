@@ -88,7 +88,7 @@ src/
 │   └── mappers/         # Entity to DTO conversion
 │
 ├── infrastructure/      # I/O implementations
-│   ├── persistence/     # InMemoryNoteRepository
+│   ├── persistence/     # SqliteNoteRepository (+ InMemory test double)
 │   └── di/              # Dependency injection
 │
 └── interfaces/          # Entry points & UI
@@ -106,7 +106,7 @@ When you create a note, this happens:
 3. **Controller** (`interfaces/http/controllers/NoteController.ts`) - Validates input
 4. **Use Case** (`application/use-cases/CreateNoteUseCase.ts`) - Orchestrates logic
 5. **Entity** (`domain/entities/Note.ts`) - Validates business rules
-6. **Repository** (`infrastructure/persistence/InMemoryNoteRepository.ts`) - Saves data
+6. **Repository** (`infrastructure/persistence/SqliteNoteRepository.ts`) - Saves data to SQLite (`data/notes.db`)
 
 Response flows back through the same layers.
 
