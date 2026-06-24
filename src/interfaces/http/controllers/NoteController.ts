@@ -18,6 +18,7 @@ import {
 import {
   createNoteSchema,
   updateNoteSchema,
+  searchNotesSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
@@ -80,10 +81,12 @@ export class NoteController {
     }
   }
 
-  static async searchNotes(query: string): Promise<ControllerResult> {
+  static async searchNotes(rawQuery: unknown): Promise<ControllerResult> {
     try {
+      const { q } = searchNotesSchema.parse({ q: rawQuery });
+
       const useCase = container.getSearchNotesUseCase();
-      const result = await useCase.execute({ query });
+      const result = await useCase.execute({ query: q });
 
       return ok(result);
     } catch (error) {

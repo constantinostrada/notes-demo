@@ -2,8 +2,10 @@
  * Next.js API Route: /api/v1/notes
  *
  * Collection endpoint for the Notes resource.
- *   - GET  → list all notes (or search when `?q=` is present)
+ *   - GET  → list all notes
  *   - POST → create a note
+ *
+ * Searching lives on its own endpoint (`GET /api/v1/notes/search?q=`).
  *
  * This handler is a thin transport adapter: it parses the HTTP request and
  * delegates to the NoteController, which validates input, resolves the use case
@@ -15,14 +17,8 @@ import { NextRequest } from 'next/server';
 import { NoteController } from '@/interfaces/http/controllers/NoteController';
 import { toNextResponse } from '@/interfaces/http/apiResponse';
 
-export async function GET(request: NextRequest) {
-  const query = request.nextUrl.searchParams.get('q');
-
-  // If a query parameter exists, search notes; otherwise list all.
-  const result = query
-    ? await NoteController.searchNotes(query)
-    : await NoteController.listNotes();
-
+export async function GET() {
+  const result = await NoteController.listNotes();
   return toNextResponse(result);
 }
 

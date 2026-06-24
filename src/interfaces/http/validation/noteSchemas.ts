@@ -30,5 +30,14 @@ export const updateNoteSchema = z
     message: 'Provide at least one field to update (title or content)',
   });
 
+/** Query params for GET /api/v1/notes/search (`q` is required, non-empty). */
+export const searchNotesSchema = z.object({
+  q: z
+    .string({ message: 'Search query (q) is required and must be a string' })
+    .trim()
+    .min(1, { message: 'Search query (q) cannot be empty' }),
+});
+
 export type CreateNotePayload = z.infer<typeof createNoteSchema>;
 export type UpdateNotePayload = z.infer<typeof updateNoteSchema>;
+export type SearchNotesQuery = z.infer<typeof searchNotesSchema>;
