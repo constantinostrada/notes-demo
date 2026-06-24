@@ -272,10 +272,22 @@ This allows swapping implementations without changing business logic:
 
 ## Storage (SQLite)
 
-**Decision**: the app persists notes in a local **SQLite** database via
-[`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) (a fast,
-synchronous, zero-server driver). SQLite needs no external service, keeps the
-demo self-contained, and gives real durability across restarts.
+**Decision**: the app persists notes in a local **SQLite** database via Node's
+built-in [`node:sqlite`](https://nodejs.org/api/sqlite.html) module
+(`DatabaseSync`) — a synchronous, zero-server driver that ships with the Node
+runtime. SQLite needs no external service, keeps the demo self-contained, and
+gives real durability across restarts.
+
+**History**: this previously used the external
+[`better-sqlite3`](https://github.com/WiseLibs/better-sqlite3) package. We
+migrated to `node:sqlite` to drop the third-party (and native-build) dependency
+entirely now that the engine is bundled with Node (≥ 22.5, used here on Node
+24). The driver swap is fully contained in `SqliteNoteRepository`; no other
+layer was touched. Two API differences were bridged locally: `node:sqlite` has
+no `.pragma()` helper (PRAGMAs run via `db.exec('PRAGMA …')`) and no
+`db.transaction()` helper (a small private `transaction()` method drives
+`BEGIN`/`COMMIT`/`ROLLBACK` by hand). `node:sqlite` is currently flagged
+experimental by Node and emits a startup warning.
 
 **Where the DB lives**: a single file at **`data/notes.db`** (project root),
 created automatically on first run along with its parent directory. The path is
@@ -292,8 +304,8 @@ back to `Date`s when reconstituting domain entities.
 `Note` entities → rows on write and rows → entities (via `Note.reconstitute`)
 on read. No SQL, rows, or the database handle ever cross into the
 `application/` or `domain/` layers, so those layers remain unaware that SQLite
-is used at all. (`better-sqlite3` is a native module, so it's marked as an
-external server package in `next.config.js`.)
+is used at all. (`node:sqlite` is a built-in Node module, so it's marked as an
+external server package in `next.config.js` to keep webpack from bundling it.)
 
 ## Benefits
 

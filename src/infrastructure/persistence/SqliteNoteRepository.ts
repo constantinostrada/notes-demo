@@ -1,8 +1,9 @@
 /**
  * Infrastructure: SQLite Note Repository
  *
- * Real, file-backed implementation of INoteRepository using better-sqlite3.
- * Data survives process restarts (the demo's default storage).
+ * Real, file-backed implementation of INoteRepository using Node's built-in
+ * `node:sqlite` module (no external dependency). Data survives process restarts
+ * (the demo's default storage).
  *
  * The repository is the ONLY place that knows about SQL or table columns:
  *   - It maps domain `Note` entities → rows on write.
@@ -13,7 +14,7 @@
 
 import fs from 'fs';
 import path from 'path';
-import Database from 'better-sqlite3';
+import { DatabaseSync } from 'node:sqlite';
 
 import { Note } from '@/domain/entities/Note';
 import {
@@ -59,23 +60,24 @@ export function resolveDbPath(): string {
  * Open (and if needed create) the notes database, ensuring its parent
  * directory exists and applying sensible pragmas. Returns a ready connection.
  */
-export function openNotesDatabase(dbPath: string = resolveDbPath()): Database.Database {
-  // better-sqlite3 won't create missing parent directories — do it ourselves.
+export function openNotesDatabase(dbPath: string = resolveDbPath()): DatabaseSync {
+  // node:sqlite won't create missing parent directories — do it ourselves.
   if (dbPath !== ':memory:') {
     fs.mkdirSync(path.dirname(dbPath), { recursive: true });
   }
 
-  const db = new Database(dbPath);
+  const db = new DatabaseSync(dbPath);
+  // node:sqlite has no `.pragma()` helper — run the PRAGMA statements directly.
   // WAL improves read/write concurrency; foreign_keys is good hygiene.
-  db.pragma('journal_mode = WAL');
-  db.pragma('foreign_keys = ON');
+  db.exec('PRAGMA journal_mode = WAL');
+  db.exec('PRAGMA foreign_keys = ON');
   return db;
 }
 
 export class SqliteNoteRepository implements INoteRepository {
-  private readonly db: Database.Database;
+  private readonly db: DatabaseSync;
 
-  constructor(db: Database.Database = openNotesDatabase()) {
+  constructor(db: DatabaseSync = openNotesDatabase()) {
     this.db = db;
     this.initSchema();
   }
@@ -120,10 +122,26 @@ export class SqliteNoteRepository implements INoteRepository {
     }
   }
 
+  /**
+   * Run `fn` inside a single SQLite transaction. node:sqlite has no
+   * `db.transaction()` helper (unlike better-sqlite3), so we drive
+   * BEGIN/COMMIT/ROLLBACK by hand and roll back on any thrown error.
+   */
+  private transaction(fn: () => void): void {
+    this.db.exec('BEGIN');
+    try {
+      fn();
+      this.db.exec('COMMIT');
+    } catch (err) {
+      this.db.exec('ROLLBACK');
+      throw err;
+    }
+  }
+
   async save(note: Note): Promise<void> {
     // Upsert the note then fully rewrite its tags, atomically. We never
     // overwrite created_at so the original creation time is preserved.
-    const persist = this.db.transaction(() => {
+    this.transaction(() => {
       this.db
         .prepare(
           `INSERT INTO notes (id, title, content, created_at, updated_at, deleted_at)
@@ -152,8 +170,6 @@ export class SqliteNoteRepository implements INoteRepository {
         insertTag.run(note.id, tag);
       }
     });
-
-    persist();
   }
 
   async findById(id: string): Promise<Note | null> {
@@ -166,7 +182,7 @@ export class SqliteNoteRepository implements INoteRepository {
   async findAll(): Promise<Note[]> {
     const rows = this.db
       .prepare('SELECT * FROM notes ORDER BY created_at DESC')
-      .all() as NoteRow[];
+      .all() as unknown as NoteRow[];
     return rows.map((row) => this.toEntity(row));
   }
 
@@ -191,7 +207,7 @@ export class SqliteNoteRepository implements INoteRepository {
          WHERE title LIKE @pattern ESCAPE '\\' OR content LIKE @pattern ESCAPE '\\'
          ORDER BY created_at DESC`
       )
-      .all({ pattern }) as NoteRow[];
+      .all({ pattern }) as unknown as NoteRow[];
     return rows.map((row) => this.toEntity(row));
   }
 
@@ -213,7 +229,7 @@ export class SqliteNoteRepository implements INoteRepository {
       conditions.push('n.deleted_at IS NULL');
     }
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const filterParams = tag ? { tag } : {};
+    const filterParams: Record<string, string> = tag ? { tag } : {};
 
     const { total } = this.db
       .prepare(`SELECT COUNT(*) AS total FROM notes n ${joinClause} ${whereClause}`)
@@ -227,7 +243,7 @@ export class SqliteNoteRepository implements INoteRepository {
          ORDER BY ${orderExpr} ${direction}, n.id ASC
          LIMIT @limit OFFSET @offset`
       )
-      .all({ ...filterParams, limit, offset }) as NoteRow[];
+      .all({ ...filterParams, limit, offset }) as unknown as NoteRow[];
 
     return { notes: rows.map((row) => this.toEntity(row)), total };
   }

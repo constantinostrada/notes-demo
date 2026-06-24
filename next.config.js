@@ -2,9 +2,9 @@
 const nextConfig = {
   reactStrictMode: true,
   experimental: {
-    // better-sqlite3 is a native module (.node binary); keep it out of the
-    // webpack server bundle so it's loaded via Node's require at runtime.
-    serverComponentsExternalPackages: ['better-sqlite3'],
+    // node:sqlite is a built-in Node module; keep it out of the webpack server
+    // bundle so it's loaded via Node's require at runtime instead of bundled.
+    serverComponentsExternalPackages: ['node:sqlite'],
   },
 }
 
