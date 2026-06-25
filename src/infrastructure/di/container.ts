@@ -13,6 +13,8 @@ import { ListNotesUseCase } from '@/application/use-cases/ListNotesUseCase';
 import { UpdateNoteUseCase } from '@/application/use-cases/UpdateNoteUseCase';
 import { DeleteNoteUseCase } from '@/application/use-cases/DeleteNoteUseCase';
 import { SearchNotesUseCase } from '@/application/use-cases/SearchNotesUseCase';
+import { ExportNotesUseCase } from '@/application/use-cases/ExportNotesUseCase';
+import { ImportNotesUseCase } from '@/application/use-cases/ImportNotesUseCase';
 
 /**
  * The repository is cached on `globalThis`.
@@ -97,6 +99,14 @@ class DIContainer {
 
   getSearchNotesUseCase(): SearchNotesUseCase {
     return new SearchNotesUseCase(this.getNoteRepository());
+  }
+
+  getExportNotesUseCase(): ExportNotesUseCase {
+    return new ExportNotesUseCase(this.getNoteRepository());
+  }
+
+  getImportNotesUseCase(): ImportNotesUseCase {
+    return new ImportNotesUseCase(this.getNoteRepository());
   }
 }
 

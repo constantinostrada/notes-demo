@@ -7,6 +7,8 @@
  *   - Base prefix:        /api/v1
  *   - Notes collection:   /api/v1/notes  (list supports ?page=&limit=&sort=&tag=)
  *   - Notes search:       /api/v1/notes/search?q=
+ *   - Notes export:       /api/v1/notes/export
+ *   - Notes import:       /api/v1/notes/import
  *   - Single note:        /api/v1/notes/:id
  *
  * The Next.js App Router derives server paths from the folder structure
@@ -43,6 +45,10 @@ export const notesApi = {
   },
   /** Search endpoint: search notes (GET) with a required `q` query param. */
   search: (query: string) => `${API_BASE}/notes/search?q=${encodeURIComponent(query)}`,
+  /** Export endpoint: download every note as a JSON snapshot (GET). */
+  export: () => `${API_BASE}/notes/export`,
+  /** Import endpoint: load an array of notes from a JSON payload (POST). */
+  import: () => `${API_BASE}/notes/import`,
   /** Single-resource endpoint: get (GET), update (PUT), delete (DELETE). */
   resource: (id: string) => `${API_BASE}/notes/${id}`,
 };

@@ -90,7 +90,42 @@ export const searchNotesSchema = z.object({
     .min(1, { message: 'Search query (q) cannot be empty' }),
 });
 
+/**
+ * One note inside an import payload. Shape-only validation: business invariants
+ * (title length, tag rules) stay in the Note entity. `id`/timestamps are
+ * optional so an export snapshot can be re-imported unchanged — when present
+ * they must be well-formed (UUID / ISO 8601). Unknown keys (e.g. the export's
+ * derived `wordCount`) are stripped, so a round-trip "just works".
+ */
+const importNoteSchema = z.object({
+  id: z.uuid({ message: 'id must be a valid UUID' }).optional(),
+  title: z
+    .string({ message: 'Title is required and must be a string' })
+    .trim()
+    .min(1, { message: 'Title is required' }),
+  content: z.string({ message: 'Content must be a string' }).optional().default(''),
+  tags: tagsSchema.optional().default([]),
+  createdAt: z.iso
+    .datetime({ message: 'createdAt must be an ISO 8601 datetime' })
+    .optional(),
+  updatedAt: z.iso
+    .datetime({ message: 'updatedAt must be an ISO 8601 datetime' })
+    .optional(),
+  deletedAt: z.iso
+    .datetime({ message: 'deletedAt must be an ISO 8601 datetime' })
+    .nullable()
+    .optional(),
+});
+
+/** Body for POST /api/v1/notes/import (a non-empty array under `notes`). */
+export const importNotesSchema = z.object({
+  notes: z
+    .array(importNoteSchema, { message: 'notes must be an array of notes' })
+    .min(1, { message: 'Provide at least one note to import' }),
+});
+
 export type CreateNotePayload = z.infer<typeof createNoteSchema>;
 export type UpdateNotePayload = z.infer<typeof updateNoteSchema>;
 export type SearchNotesQuery = z.infer<typeof searchNotesSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesSchema>;
+export type ImportNotesPayload = z.infer<typeof importNotesSchema>;

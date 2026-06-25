@@ -20,6 +20,7 @@ import {
   updateNoteSchema,
   searchNotesSchema,
   listNotesSchema,
+  importNotesSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
@@ -94,6 +95,30 @@ export class NoteController {
       const result = await useCase.execute({ query: q });
 
       return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async exportNotes(): Promise<ControllerResult> {
+    try {
+      const useCase = container.getExportNotesUseCase();
+      const result = await useCase.execute();
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async importNotes(body: unknown): Promise<ControllerResult> {
+    try {
+      const input = importNotesSchema.parse(body);
+
+      const useCase = container.getImportNotesUseCase();
+      const result = await useCase.execute(input);
+
+      return ok(result, 201);
     } catch (error) {
       return mapError(error);
     }

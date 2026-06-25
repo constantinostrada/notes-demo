@@ -19,14 +19,16 @@ These conventions are intentional and apply to every endpoint.
 - **HTTP verb = intent**: `GET` reads, `POST` creates, `PUT` updates,
   `DELETE` removes.
 
-| Operation     | Method & Path              | Use case            |
-| ------------- | -------------------------- | ------------------- |
-| List notes    | `GET /api/v1/notes`        | `ListNotesUseCase`  |
-| Search notes  | `GET /api/v1/notes?q=...`  | `SearchNotesUseCase`|
-| Create note   | `POST /api/v1/notes`       | `CreateNoteUseCase` |
-| Get note      | `GET /api/v1/notes/:id`    | `GetNoteUseCase`    |
-| Update note   | `PUT /api/v1/notes/:id`    | `UpdateNoteUseCase` |
-| Delete note   | `DELETE /api/v1/notes/:id` | `DeleteNoteUseCase` |
+| Operation     | Method & Path                   | Use case             |
+| ------------- | ------------------------------- | -------------------- |
+| List notes    | `GET /api/v1/notes`             | `ListNotesUseCase`   |
+| Search notes  | `GET /api/v1/notes/search?q=`   | `SearchNotesUseCase` |
+| Export notes  | `GET /api/v1/notes/export`      | `ExportNotesUseCase` |
+| Import notes  | `POST /api/v1/notes/import`     | `ImportNotesUseCase` |
+| Create note   | `POST /api/v1/notes`            | `CreateNoteUseCase`  |
+| Get note      | `GET /api/v1/notes/:id`         | `GetNoteUseCase`     |
+| Update note   | `PUT /api/v1/notes/:id`         | `UpdateNoteUseCase`  |
+| Delete note   | `DELETE /api/v1/notes/:id`      | `DeleteNoteUseCase`  |
 
 The route convention lives in code in `src/interfaces/http/apiRoutes.ts` and is
 reused by the frontend so client and server never drift.
@@ -181,6 +183,119 @@ GET /api/v1/notes?q=search+query
   "data": {
     "notes": [...],
     "total": 1
+  }
+}
+```
+
+### Export Notes
+
+```http
+GET /api/v1/notes/export
+```
+
+Returns a JSON snapshot of **every** note — archived (soft-deleted) notes
+included — shaped so it can be fed straight back into [Import Notes](#import-notes)
+for a lossless round-trip (ids and timestamps are preserved). Read-only: no API
+key required.
+
+**Response (200)**
+```json
+{
+  "data": {
+    "exportedAt": "2024-01-01T00:00:00.000Z",
+    "count": 1,
+    "notes": [
+      {
+        "id": "uuid",
+        "title": "Note Title",
+        "content": "Note content...",
+        "tags": ["work"],
+        "wordCount": 2,
+        "createdAt": "2024-01-01T00:00:00.000Z",
+        "updatedAt": "2024-01-01T00:00:00.000Z",
+        "deletedAt": null
+      }
+    ]
+  }
+}
+```
+
+- `exportedAt` — ISO timestamp the snapshot was produced.
+- `count` — number of notes in `notes` (the whole store, ignoring archive state).
+
+### Import Notes
+
+```http
+POST /api/v1/notes/import
+```
+
+Loads an array of notes (under `notes`), validating each one and creating it.
+Designed to consume the output of [Export Notes](#export-notes). **Writes
+require a valid API key** (`x-api-key` header) when `API_KEY` is configured.
+
+**Request Body**
+```json
+{
+  "notes": [
+    { "title": "Plain note", "content": "minimal" },
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "title": "Restored note",
+      "content": "with preserved identity",
+      "tags": ["work"],
+      "createdAt": "2024-01-01T00:00:00.000Z",
+      "updatedAt": "2024-02-01T00:00:00.000Z",
+      "deletedAt": null
+    }
+  ]
+}
+```
+
+**Per-note fields**
+- `title` — required, non-empty string (schema → `400`; ≤ 200 chars business
+  rule → `422 INVALID_NOTE`).
+- `content` — optional string (defaults to `""`).
+- `tags` — optional array of strings (normalized + de-duplicated by the domain).
+- `id` — optional **UUID**. When present it is preserved (strong read-back);
+  when absent a fresh id is generated.
+- `createdAt` / `updatedAt` / `deletedAt` — optional **ISO 8601** datetimes.
+  Preserved when present; otherwise `createdAt`/`updatedAt` default to "now" and
+  `deletedAt` to `null`. A non-null `deletedAt` imports the note as archived.
+
+Any unknown fields (e.g. the export's derived `wordCount`) are ignored, so an
+export snapshot can be re-imported as-is.
+
+**De-duplication**: a note whose `id` already exists in the store — or repeats
+an `id` seen earlier in the same payload — is **skipped**, never overwritten or
+duplicated. Re-importing the same export is therefore a no-op.
+
+**Validation is atomic**: the `notes` array must be non-empty, and if any note
+breaks a rule the whole batch is rejected (nothing is partially imported).
+
+**Response (201)**
+```json
+{
+  "data": {
+    "imported": 2,
+    "skipped": 0,
+    "total": 2,
+    "notes": [ { "id": "uuid", "title": "Plain note", "...": "..." } ]
+  }
+}
+```
+
+- `imported` — notes created.
+- `skipped` — notes de-duplicated (existing/repeated id).
+- `total` — notes received in the payload (`imported + skipped`).
+- `notes` — the DTOs of the created notes.
+
+**Error Response (400 — empty array / malformed note)**
+```json
+{
+  "error": {
+    "code": "VALIDATION_ERROR",
+    "message": "Request payload is invalid",
+    "details": [{ "path": "notes", "message": "Provide at least one note to import" }]
   }
 }
 ```
@@ -379,6 +494,19 @@ curl -X DELETE http://localhost:3000/api/v1/notes/UUID-HERE
 **Search notes:**
 ```bash
 curl http://localhost:3000/api/v1/notes?q=hello
+```
+
+**Export all notes (e.g. to a file):**
+```bash
+curl http://localhost:3000/api/v1/notes/export > notes-backup.json
+```
+
+**Import notes (send the exported `data` payload's `notes` array):**
+```bash
+curl -X POST http://localhost:3000/api/v1/notes/import \
+  -H "Content-Type: application/json" \
+  -H "x-api-key: $API_KEY" \
+  -d '{"notes":[{"title":"Imported","content":"Hello"}]}'
 ```
 
 ### JavaScript/TypeScript Examples
