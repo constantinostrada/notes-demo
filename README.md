@@ -113,6 +113,35 @@ sets `SQLITE_DB_PATH=:memory:`, which makes the DI container open an ephemeral,
 in-process SQLite database for the test run. Each test starts from a clean slate
 (the shared repository's rows are wiped in a `beforeEach`).
 
+## API Authentication
+
+The write endpoints — `POST /api/v1/notes`, `PUT /api/v1/notes/:id`, and
+`DELETE /api/v1/notes/:id` — are protected by an API key. Reads
+(`GET` endpoints) are public.
+
+Configure the shared secret with the `API_KEY` environment variable and send it
+in the `x-api-key` request header:
+
+```bash
+curl -X POST http://localhost:3000/api/v1/notes \
+  -H "content-type: application/json" \
+  -H "x-api-key: $API_KEY" \
+  -d '{"title":"Hello","content":"world"}'
+```
+
+- **Missing or invalid key** → `401` with the standard error envelope:
+
+  ```json
+  { "error": { "code": "UNAUTHORIZED", "message": "Missing or invalid API key" } }
+  ```
+
+- **`API_KEY` unset** → authentication is **disabled** and writes are open. This
+  keeps local development and the test suite friction-free; always set `API_KEY`
+  in production.
+
+The check is a thin HTTP-layer guard (`src/interfaces/http/auth.ts`) applied in
+the write route handlers — no business logic, fully inside the interfaces layer.
+
 ## Clean Architecture Layers
 
 This project follows Clean Architecture principles with strict layer separation:

@@ -18,6 +18,7 @@
 import { NextRequest } from 'next/server';
 import { NoteController } from '@/interfaces/http/controllers/NoteController';
 import { toNextResponse } from '@/interfaces/http/apiResponse';
+import { requireApiKey } from '@/interfaces/http/auth';
 
 export async function GET(request: NextRequest) {
   // Forward the listing query params (pagination, sort, tag filter). Absent or
@@ -40,6 +41,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Writes require a valid API key (no-op when none is configured).
+  const unauthorized = requireApiKey(request);
+  if (unauthorized) return toNextResponse(unauthorized);
+
   // `undefined` on malformed JSON → caught by schema validation as a 400.
   const body = await request.json().catch(() => undefined);
   const result = await NoteController.createNote(body);

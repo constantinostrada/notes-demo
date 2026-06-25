@@ -14,6 +14,7 @@
 import { NextRequest } from 'next/server';
 import { NoteController } from '@/interfaces/http/controllers/NoteController';
 import { toNextResponse } from '@/interfaces/http/apiResponse';
+import { requireApiKey } from '@/interfaces/http/auth';
 
 interface RouteContext {
   params: {
@@ -27,13 +28,21 @@ export async function GET(_request: NextRequest, { params }: RouteContext) {
 }
 
 export async function PUT(request: NextRequest, { params }: RouteContext) {
+  // Writes require a valid API key (no-op when none is configured).
+  const unauthorized = requireApiKey(request);
+  if (unauthorized) return toNextResponse(unauthorized);
+
   // `undefined` on malformed JSON → caught by schema validation as a 400.
   const body = await request.json().catch(() => undefined);
   const result = await NoteController.updateNote(params.id, body);
   return toNextResponse(result);
 }
 
-export async function DELETE(_request: NextRequest, { params }: RouteContext) {
+export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  // Writes require a valid API key (no-op when none is configured).
+  const unauthorized = requireApiKey(request);
+  if (unauthorized) return toNextResponse(unauthorized);
+
   const result = await NoteController.deleteNote(params.id);
   return toNextResponse(result);
 }

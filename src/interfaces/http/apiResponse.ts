@@ -14,6 +14,7 @@
  *
  * Mapping of errors → status:
  *   ZodError (invalid payload) ............ 400 VALIDATION_ERROR
+ *   missing/invalid API key ............... 401 UNAUTHORIZED (see http/auth.ts)
  *   NoteNotFoundException ................. 404 NOTE_NOT_FOUND
  *   InvalidNoteException (broken invariant) 422 INVALID_NOTE
  *   other DomainException ................. 400 DOMAIN_ERROR
@@ -31,6 +32,7 @@ import {
 /** Machine-readable, stable error codes returned to clients. */
 export const ErrorCode = {
   VALIDATION_ERROR: 'VALIDATION_ERROR',
+  UNAUTHORIZED: 'UNAUTHORIZED',
   NOTE_NOT_FOUND: 'NOTE_NOT_FOUND',
   INVALID_NOTE: 'INVALID_NOTE',
   DOMAIN_ERROR: 'DOMAIN_ERROR',
