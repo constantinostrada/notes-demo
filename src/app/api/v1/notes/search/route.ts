@@ -14,8 +14,13 @@
 import { NextRequest } from 'next/server';
 import { NoteController } from '@/interfaces/http/controllers/NoteController';
 import { toNextResponse } from '@/interfaces/http/apiResponse';
+import { enforceRateLimit } from '@/interfaces/http/rateLimit';
 
 export async function GET(request: NextRequest) {
+  // Per-IP rate limit (429 + Retry-After when exceeded).
+  const limited = enforceRateLimit(request);
+  if (limited) return toNextResponse(limited);
+
   // `null` when `q` is absent → caught by schema validation as a 400.
   const query = request.nextUrl.searchParams.get('q');
   const result = await NoteController.searchNotes(query);

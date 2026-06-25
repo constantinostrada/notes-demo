@@ -15,6 +15,7 @@ import { NextRequest } from 'next/server';
 import { NoteController } from '@/interfaces/http/controllers/NoteController';
 import { toNextResponse } from '@/interfaces/http/apiResponse';
 import { requireApiKey } from '@/interfaces/http/auth';
+import { enforceRateLimit } from '@/interfaces/http/rateLimit';
 
 interface RouteContext {
   params: {
@@ -22,12 +23,20 @@ interface RouteContext {
   };
 }
 
-export async function GET(_request: NextRequest, { params }: RouteContext) {
+export async function GET(request: NextRequest, { params }: RouteContext) {
+  // Per-IP rate limit (429 + Retry-After when exceeded).
+  const limited = enforceRateLimit(request);
+  if (limited) return toNextResponse(limited);
+
   const result = await NoteController.getNote(params.id);
   return toNextResponse(result);
 }
 
 export async function PUT(request: NextRequest, { params }: RouteContext) {
+  // Per-IP rate limit (429 + Retry-After when exceeded).
+  const limited = enforceRateLimit(request);
+  if (limited) return toNextResponse(limited);
+
   // Writes require a valid API key (no-op when none is configured).
   const unauthorized = requireApiKey(request);
   if (unauthorized) return toNextResponse(unauthorized);
@@ -39,6 +48,10 @@ export async function PUT(request: NextRequest, { params }: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, { params }: RouteContext) {
+  // Per-IP rate limit (429 + Retry-After when exceeded).
+  const limited = enforceRateLimit(request);
+  if (limited) return toNextResponse(limited);
+
   // Writes require a valid API key (no-op when none is configured).
   const unauthorized = requireApiKey(request);
   if (unauthorized) return toNextResponse(unauthorized);

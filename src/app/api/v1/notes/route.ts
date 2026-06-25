@@ -19,8 +19,13 @@ import { NextRequest } from 'next/server';
 import { NoteController } from '@/interfaces/http/controllers/NoteController';
 import { toNextResponse } from '@/interfaces/http/apiResponse';
 import { requireApiKey } from '@/interfaces/http/auth';
+import { enforceRateLimit } from '@/interfaces/http/rateLimit';
 
 export async function GET(request: NextRequest) {
+  // Per-IP rate limit (429 + Retry-After when exceeded).
+  const limited = enforceRateLimit(request);
+  if (limited) return toNextResponse(limited);
+
   // Forward the listing query params (pagination, sort, tag filter). Absent or
   // empty values become `undefined` so the schema applies its defaults rather
   // than choking on `null`/`""`.
@@ -41,6 +46,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  // Per-IP rate limit (429 + Retry-After when exceeded).
+  const limited = enforceRateLimit(request);
+  if (limited) return toNextResponse(limited);
+
   // Writes require a valid API key (no-op when none is configured).
   const unauthorized = requireApiKey(request);
   if (unauthorized) return toNextResponse(unauthorized);

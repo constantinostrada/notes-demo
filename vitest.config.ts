@@ -55,6 +55,11 @@ export default defineConfig({
     include: ['tests/**/*.test.ts'],
     env: {
       SQLITE_DB_PATH: ':memory:',
+      // Rate limiting is off by default for the suite so the per-IP limiter's
+      // process-wide state can't make unrelated tests flaky. The dedicated
+      // rate-limit test re-enables it per case (the guard reads env at request
+      // time, like the API-key guard).
+      RATE_LIMIT_DISABLED: 'true',
     },
   },
 });

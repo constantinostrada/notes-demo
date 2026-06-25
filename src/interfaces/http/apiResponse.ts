@@ -18,7 +18,11 @@
  *   NoteNotFoundException ................. 404 NOTE_NOT_FOUND
  *   InvalidNoteException (broken invariant) 422 INVALID_NOTE
  *   other DomainException ................. 400 DOMAIN_ERROR
+ *   too many requests ..................... 429 RATE_LIMITED (see http/rateLimit.ts)
  *   anything else (bug) .................... 500 INTERNAL_ERROR
+ *
+ * A ControllerResult may carry response `headers` (e.g. `Retry-After` on a 429);
+ * `toNextResponse` copies them onto the outgoing response.
  */
 
 import { NextResponse } from 'next/server';
@@ -36,6 +40,7 @@ export const ErrorCode = {
   NOTE_NOT_FOUND: 'NOTE_NOT_FOUND',
   INVALID_NOTE: 'INVALID_NOTE',
   DOMAIN_ERROR: 'DOMAIN_ERROR',
+  RATE_LIMITED: 'RATE_LIMITED',
   INTERNAL_ERROR: 'INTERNAL_ERROR',
 } as const;
 
@@ -66,6 +71,8 @@ export interface ApiSuccessBody<T = unknown> {
 export interface ControllerResult {
   status: number;
   body: ApiSuccessBody | ApiErrorBody | null;
+  /** Extra response headers (e.g. `Retry-After` on a 429). */
+  headers?: Record<string, string>;
 }
 
 /** Build a success result. */
@@ -83,9 +90,14 @@ export function errorResult(
   status: number,
   code: ErrorCode,
   message: string,
-  details?: ApiErrorDetail[]
+  details?: ApiErrorDetail[],
+  headers?: Record<string, string>
 ): ControllerResult {
-  return { status, body: { error: { code, message, ...(details ? { details } : {}) } } };
+  return {
+    status,
+    body: { error: { code, message, ...(details ? { details } : {}) } },
+    ...(headers ? { headers } : {}),
+  };
 }
 
 /**
@@ -120,8 +132,12 @@ export function mapError(error: unknown): ControllerResult {
 
 /** Serialize a ControllerResult into a Next.js response. */
 export function toNextResponse(result: ControllerResult): NextResponse {
+  const init = {
+    status: result.status,
+    ...(result.headers ? { headers: result.headers } : {}),
+  };
   if (result.body === null) {
-    return new NextResponse(null, { status: result.status });
+    return new NextResponse(null, init);
   }
-  return NextResponse.json(result.body, { status: result.status });
+  return NextResponse.json(result.body, init);
 }
