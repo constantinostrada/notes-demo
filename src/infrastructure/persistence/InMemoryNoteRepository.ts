@@ -28,6 +28,7 @@ export class InMemoryNoteRepository implements INoteRepository {
       createdAt: note.createdAt,
       updatedAt: note.updatedAt,
       deletedAt: note.deletedAt,
+      color: note.color,
     };
 
     // Reconstitute to create a fresh instance
@@ -38,7 +39,8 @@ export class InMemoryNoteRepository implements INoteRepository {
       serialized.tags,
       serialized.createdAt,
       serialized.updatedAt,
-      serialized.deletedAt
+      serialized.deletedAt,
+      serialized.color
     );
 
     this.notes.set(note.id, persistedNote);

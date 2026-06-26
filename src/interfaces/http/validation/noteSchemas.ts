@@ -24,6 +24,17 @@ import {
  */
 const tagsSchema = z.array(z.string({ message: 'Each tag must be a string' }));
 
+/**
+ * Colour payload: an optional `#RRGGBB` hex string. Shape/format check only —
+ * the same invariant is re-enforced by the Note entity. A malformed value
+ * throws a ZodError → 400 VALIDATION_ERROR via the central `mapError`.
+ */
+const colorSchema = z
+  .string({ message: 'Color must be a string' })
+  .regex(/^#[0-9A-Fa-f]{6}$/, {
+    message: 'Color must be a hex string in #RRGGBB format',
+  });
+
 /** Body for POST /api/v1/notes */
 export const createNoteSchema = z.object({
   title: z
@@ -32,6 +43,7 @@ export const createNoteSchema = z.object({
     .min(1, { message: 'Title is required' }),
   content: z.string({ message: 'Content must be a string' }).optional().default(''),
   tags: tagsSchema.optional().default([]),
+  color: colorSchema.optional(),
 });
 
 /** Body for PUT /api/v1/notes/:id (partial update; at least one field) */
@@ -40,12 +52,16 @@ export const updateNoteSchema = z
     title: z.string().trim().min(1, { message: 'Title cannot be empty' }).optional(),
     content: z.string().optional(),
     tags: tagsSchema.optional(),
+    color: colorSchema.optional(),
   })
   .refine(
     (data) =>
-      data.title !== undefined || data.content !== undefined || data.tags !== undefined,
+      data.title !== undefined ||
+      data.content !== undefined ||
+      data.tags !== undefined ||
+      data.color !== undefined,
     {
-      message: 'Provide at least one field to update (title, content or tags)',
+      message: 'Provide at least one field to update (title, content, tags or color)',
     }
   );
 
@@ -115,6 +131,7 @@ const importNoteSchema = z.object({
     .datetime({ message: 'deletedAt must be an ISO 8601 datetime' })
     .nullable()
     .optional(),
+  color: colorSchema.nullable().optional(),
 });
 
 /** Body for POST /api/v1/notes/import (a non-empty array under `notes`). */

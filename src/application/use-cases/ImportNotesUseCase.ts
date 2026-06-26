@@ -82,7 +82,8 @@ export class ImportNotesUseCase {
       raw.tags ?? [],
       createdAt,
       updatedAt,
-      deletedAt
+      deletedAt,
+      raw.color ?? null
     );
   }
 }

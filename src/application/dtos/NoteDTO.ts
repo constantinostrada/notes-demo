@@ -9,6 +9,8 @@ export interface CreateNoteInputDTO {
   title: string;
   content: string;
   tags?: string[];
+  /** Optional `#RRGGBB` colour. */
+  color?: string | null;
 }
 
 export interface UpdateNoteInputDTO {
@@ -16,6 +18,8 @@ export interface UpdateNoteInputDTO {
   title?: string;
   content?: string;
   tags?: string[];
+  /** Optional `#RRGGBB` colour. */
+  color?: string | null;
 }
 
 export interface NoteOutputDTO {
@@ -28,6 +32,8 @@ export interface NoteOutputDTO {
   updatedAt: string;
   /** ISO archive timestamp when the note is archived, otherwise null. */
   deletedAt: string | null;
+  /** `#RRGGBB` colour, or null when the note has no colour. */
+  color: string | null;
 }
 
 export interface DeleteNoteInputDTO {
@@ -98,6 +104,7 @@ export interface ImportNoteInputDTO {
   createdAt?: string;
   updatedAt?: string;
   deletedAt?: string | null;
+  color?: string | null;
 }
 
 export interface ImportNotesInputDTO {

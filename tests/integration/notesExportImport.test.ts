@@ -111,6 +111,29 @@ describe('POST /api/v1/notes/import', () => {
     expect(after.notes[0]).toEqual(snapshot.notes[0]); // verbatim read-back
   });
 
+  it('preserves a note colour across an export/import round-trip', async () => {
+    await postNote({ title: 'Coloured', content: 'body', color: '#0F0F0F' });
+    const snapshot = (await (await exportNotes(new NextRequest(`${BASE}/export`))).json())
+      .data;
+    expect(snapshot.notes[0].color).toBe('#0F0F0F');
+
+    // Wipe and re-import the snapshot; the colour comes back intact.
+    const repository = container.getNoteRepository();
+    for (const note of await repository.findAll()) {
+      await repository.delete(note.id);
+    }
+
+    const res = await importNotes(
+      jsonRequest(`${BASE}/import`, 'POST', { notes: snapshot.notes })
+    );
+    expect(res.status).toBe(201);
+    expect((await res.json()).data.imported).toBe(1);
+
+    const after = (await (await exportNotes(new NextRequest(`${BASE}/export`))).json())
+      .data;
+    expect(after.notes[0].color).toBe('#0F0F0F');
+  });
+
   it('returns 400 VALIDATION_ERROR for an empty notes array', async () => {
     const res = await importNotes(
       jsonRequest(`${BASE}/import`, 'POST', { notes: [] })

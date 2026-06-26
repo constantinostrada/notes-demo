@@ -29,7 +29,8 @@ export class CreateNoteUseCase {
       noteId.toString(),
       input.title.trim(),
       input.content || '',
-      input.tags ?? []
+      input.tags ?? [],
+      input.color ?? null
     );
 
     // Persist via repository

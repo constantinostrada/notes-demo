@@ -69,4 +69,28 @@ describe('CreateNoteUseCase', () => {
     ).rejects.toBeInstanceOf(InvalidNoteException);
     expect(repository.size()).toBe(0);
   });
+
+  it('stores an optional hex colour and returns it', async () => {
+    const result = await useCase.execute({
+      title: 'Coloured',
+      content: '',
+      color: '#FF8800',
+    });
+
+    expect(result.color).toBe('#FF8800');
+    const stored = await repository.findById(result.id);
+    expect(stored?.color).toBe('#FF8800');
+  });
+
+  it('defaults colour to null when omitted', async () => {
+    const result = await useCase.execute({ title: 'No colour', content: '' });
+    expect(result.color).toBeNull();
+  });
+
+  it('rejects a malformed colour with InvalidNoteException', async () => {
+    await expect(
+      useCase.execute({ title: 'Bad colour', content: '', color: 'red' })
+    ).rejects.toBeInstanceOf(InvalidNoteException);
+    expect(repository.size()).toBe(0);
+  });
 });

@@ -12,6 +12,8 @@ export class Note {
   private static readonly MAX_TAG_LENGTH = 50;
   /** Business rule: a note cannot carry more than this many distinct tags. */
   private static readonly MAX_TAGS = 20;
+  /** Business rule: a colour, when set, must be a `#RRGGBB` hex string. */
+  private static readonly COLOR_PATTERN = /^#[0-9A-Fa-f]{6}$/;
 
   private _tags: string[];
 
@@ -23,19 +25,28 @@ export class Note {
     private readonly _createdAt: Date,
     private _updatedAt: Date,
     /** When set, the note is archived (soft-deleted); null means active. */
-    private _deletedAt: Date | null
+    private _deletedAt: Date | null,
+    /** Optional `#RRGGBB` colour tag; null means no colour set. */
+    private _color: string | null
   ) {
     this.validateTitle(this._title);
     this._tags = Note.normalizeTags(tags);
     this.validateTags(this._tags);
+    this.validateColor(this._color);
   }
 
   /**
    * Factory method to create a new Note
    */
-  static create(id: string, title: string, content: string, tags: string[] = []): Note {
+  static create(
+    id: string,
+    title: string,
+    content: string,
+    tags: string[] = [],
+    color: string | null = null
+  ): Note {
     const now = new Date();
-    return new Note(id, title, content, tags, now, now, null);
+    return new Note(id, title, content, tags, now, now, null, color);
   }
 
   /**
@@ -48,9 +59,10 @@ export class Note {
     tags: string[],
     createdAt: Date,
     updatedAt: Date,
-    deletedAt: Date | null = null
+    deletedAt: Date | null = null,
+    color: string | null = null
   ): Note {
-    return new Note(id, title, content, tags, createdAt, updatedAt, deletedAt);
+    return new Note(id, title, content, tags, createdAt, updatedAt, deletedAt, color);
   }
 
   /**
@@ -101,6 +113,16 @@ export class Note {
   }
 
   /**
+   * Business rule: an optional colour must be a `#RRGGBB` hex string.
+   * `null` is allowed and means the note has no colour.
+   */
+  private validateColor(color: string | null): void {
+    if (color !== null && !Note.COLOR_PATTERN.test(color)) {
+      throw new InvalidNoteException('Note color must be a hex string in #RRGGBB format');
+    }
+  }
+
+  /**
    * Update the note's title with validation
    */
   updateTitle(newTitle: string): void {
@@ -124,6 +146,15 @@ export class Note {
     const normalized = Note.normalizeTags(newTags);
     this.validateTags(normalized);
     this._tags = normalized;
+    this._updatedAt = new Date();
+  }
+
+  /**
+   * Update the note's colour with validation. Pass `null` to clear it.
+   */
+  updateColor(newColor: string | null): void {
+    this.validateColor(newColor);
+    this._color = newColor;
     this._updatedAt = new Date();
   }
 
@@ -194,5 +225,10 @@ export class Note {
   /** Archive timestamp, or null when the note is active. */
   get deletedAt(): Date | null {
     return this._deletedAt;
+  }
+
+  /** Optional `#RRGGBB` colour, or null when the note has no colour. */
+  get color(): string | null {
+    return this._color;
   }
 }

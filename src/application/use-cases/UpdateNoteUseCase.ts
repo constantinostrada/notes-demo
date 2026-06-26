@@ -35,6 +35,11 @@ export class UpdateNoteUseCase {
       note.updateTags(input.tags);
     }
 
+    // Update colour if provided (format enforced in entity)
+    if (input.color !== undefined) {
+      note.updateColor(input.color);
+    }
+
     // Persist changes
     await this.noteRepository.save(note);
 

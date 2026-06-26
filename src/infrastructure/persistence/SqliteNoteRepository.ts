@@ -43,6 +43,7 @@ interface NoteRow {
   created_at: number; // epoch milliseconds
   updated_at: number; // epoch milliseconds
   deleted_at: number | null; // epoch milliseconds; null when active (not archived)
+  color: string | null; // `#RRGGBB` hex string; null when no colour set
 }
 
 /** Default location of the SQLite database file: `<project>/data/notes.db`. */
@@ -91,7 +92,8 @@ export class SqliteNoteRepository implements INoteRepository {
         content    TEXT    NOT NULL DEFAULT '',
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
-        deleted_at INTEGER
+        deleted_at INTEGER,
+        color      TEXT
       );
       CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes (created_at DESC);
 
@@ -107,18 +109,21 @@ export class SqliteNoteRepository implements INoteRepository {
       CREATE INDEX IF NOT EXISTS idx_note_tags_tag ON note_tags (tag);
     `);
 
-    // Soft-delete migration: databases created before the `deleted_at` column
-    // existed are upgraded in place (CREATE TABLE IF NOT EXISTS won't add it).
-    this.ensureDeletedAtColumn();
+    // In-place migrations: databases created before a column existed are
+    // upgraded here (CREATE TABLE IF NOT EXISTS won't add columns to a table
+    // that already exists). Each is additive and nullable, so existing rows
+    // keep their data untouched.
+    this.ensureColumn('deleted_at', 'INTEGER');
+    this.ensureColumn('color', 'TEXT');
   }
 
-  /** Add the nullable `deleted_at` column to legacy `notes` tables if missing. */
-  private ensureDeletedAtColumn(): void {
+  /** Add a nullable `column` of the given SQL `type` to `notes` if it's missing. */
+  private ensureColumn(column: string, type: string): void {
     const columns = this.db.prepare('PRAGMA table_info(notes)').all() as {
       name: string;
     }[];
-    if (!columns.some((column) => column.name === 'deleted_at')) {
-      this.db.exec('ALTER TABLE notes ADD COLUMN deleted_at INTEGER');
+    if (!columns.some((existing) => existing.name === column)) {
+      this.db.exec(`ALTER TABLE notes ADD COLUMN ${column} ${type}`);
     }
   }
 
@@ -144,13 +149,14 @@ export class SqliteNoteRepository implements INoteRepository {
     this.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO notes (id, title, content, created_at, updated_at, deleted_at)
-           VALUES (@id, @title, @content, @createdAt, @updatedAt, @deletedAt)
+          `INSERT INTO notes (id, title, content, created_at, updated_at, deleted_at, color)
+           VALUES (@id, @title, @content, @createdAt, @updatedAt, @deletedAt, @color)
            ON CONFLICT(id) DO UPDATE SET
              title      = excluded.title,
              content    = excluded.content,
              updated_at = excluded.updated_at,
-             deleted_at = excluded.deleted_at`
+             deleted_at = excluded.deleted_at,
+             color      = excluded.color`
         )
         .run({
           id: note.id,
@@ -159,6 +165,7 @@ export class SqliteNoteRepository implements INoteRepository {
           createdAt: note.createdAt.getTime(),
           updatedAt: note.updatedAt.getTime(),
           deletedAt: note.deletedAt ? note.deletedAt.getTime() : null,
+          color: note.color,
         });
 
       // Replace-all keeps the tag set in sync on both create and update.
@@ -265,7 +272,8 @@ export class SqliteNoteRepository implements INoteRepository {
       this.loadTags(row.id),
       new Date(row.created_at),
       new Date(row.updated_at),
-      row.deleted_at !== null ? new Date(row.deleted_at) : null
+      row.deleted_at !== null ? new Date(row.deleted_at) : null,
+      row.color
     );
   }
 }

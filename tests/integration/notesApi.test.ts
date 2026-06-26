@@ -5,6 +5,7 @@ import { container } from '@/infrastructure/di/container';
 import { GET as listNotes, POST as createNote } from '@/app/api/v1/notes/route';
 import {
   GET as getNoteById,
+  PUT as updateNoteById,
   DELETE as deleteNoteById,
 } from '@/app/api/v1/notes/[id]/route';
 import { GET as searchNotes } from '@/app/api/v1/notes/search/route';
@@ -92,6 +93,67 @@ describe('POST /api/v1/notes + GET /api/v1/notes/:id', () => {
     const { error } = await res.json();
     expect(error.code).toBe('VALIDATION_ERROR');
     expect(error.details).toBeInstanceOf(Array);
+  });
+
+  it('accepts an optional hex colour and reads it back', async () => {
+    const created = await postNote({
+      title: 'Coloured note',
+      content: 'has a colour',
+      color: '#1A2B3C',
+    });
+
+    expect(created.color).toBe('#1A2B3C');
+
+    const res = await getNoteById(new NextRequest(`${BASE}/${created.id}`), {
+      params: { id: created.id },
+    });
+    const { data } = await res.json();
+    expect(data.color).toBe('#1A2B3C');
+  });
+
+  it('defaults colour to null when omitted', async () => {
+    const created = await postNote({ title: 'No colour', content: '' });
+    expect(created.color).toBeNull();
+  });
+
+  it('returns 400 VALIDATION_ERROR for a malformed colour', async () => {
+    const res = await createNote(
+      jsonRequest(BASE, 'POST', { title: 'Bad colour', color: 'blue' })
+    );
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+    expect(error.details).toBeInstanceOf(Array);
+  });
+});
+
+describe('PUT /api/v1/notes/:id (update colour)', () => {
+  it('updates the colour of an existing note', async () => {
+    const created = await postNote({ title: 'Recolour me', content: '' });
+    expect(created.color).toBeNull();
+
+    const res = await updateNoteById(
+      jsonRequest(`${BASE}/${created.id}`, 'PUT', { color: '#ABCDEF' }),
+      { params: { id: created.id } }
+    );
+    expect(res.status).toBe(200);
+
+    const { data } = await res.json();
+    expect(data.color).toBe('#ABCDEF');
+  });
+
+  it('returns 400 VALIDATION_ERROR for a malformed colour on update', async () => {
+    const created = await postNote({ title: 'Keep colour', content: '' });
+
+    const res = await updateNoteById(
+      jsonRequest(`${BASE}/${created.id}`, 'PUT', { color: '#GGGGGG' }),
+      { params: { id: created.id } }
+    );
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
   });
 });
 
