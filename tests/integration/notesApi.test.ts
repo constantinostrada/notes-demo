@@ -9,6 +9,7 @@ import {
   DELETE as deleteNoteById,
 } from '@/app/api/v1/notes/[id]/route';
 import { GET as searchNotes } from '@/app/api/v1/notes/search/route';
+import { GET as countNotes } from '@/app/api/v1/notes/count/route';
 
 /**
  * Integration tests for the Notes HTTP API.
@@ -229,6 +230,64 @@ describe('GET /api/v1/notes (list)', () => {
   });
 });
 
+describe('GET /api/v1/notes/count', () => {
+  const COUNT = `${BASE}/count`;
+
+  it('returns { data: { count } } respecting the tag filter', async () => {
+    await postNote({ title: 'Alpha', content: 'a', tags: ['work'] });
+    await postNote({ title: 'Beta', content: 'b', tags: ['work'] });
+    await postNote({ title: 'Gamma', content: 'c', tags: ['home'] });
+
+    const all = await countNotes(new NextRequest(COUNT));
+    expect(all.status).toBe(200);
+    expect(await all.json()).toEqual({ data: { count: 3 } });
+
+    const work = await countNotes(new NextRequest(`${COUNT}?tag=work`));
+    expect((await work.json()).data.count).toBe(2);
+  });
+
+  it('excludes archived notes by default, includes them with includeArchived', async () => {
+    const keep = await postNote({ title: 'Keep', content: 'stays' });
+    const archived = await postNote({ title: 'Archive me', content: 'gone' });
+    void keep;
+
+    const del = await deleteNoteById(new NextRequest(`${BASE}/${archived.id}`), {
+      params: { id: archived.id },
+    });
+    expect(del.status).toBe(204);
+
+    const def = await countNotes(new NextRequest(COUNT));
+    expect((await def.json()).data.count).toBe(1);
+
+    const withArchived = await countNotes(
+      new NextRequest(`${COUNT}?includeArchived=true`)
+    );
+    expect((await withArchived.json()).data.count).toBe(2);
+  });
+
+  it('respects an inclusive created-at range combined with a tag', async () => {
+    await postNote({ title: 'Alpha', content: 'a', tags: ['work'] });
+    await postNote({ title: 'Beta', content: 'b', tags: ['home'] });
+
+    const inRange = await countNotes(
+      new NextRequest(`${COUNT}?tag=work&createdAfter=2020-01-01&createdBefore=2999-01-01`)
+    );
+    expect((await inRange.json()).data.count).toBe(1);
+
+    // A past-only upper bound excludes the just-created notes (stable, count 0).
+    const empty = await countNotes(new NextRequest(`${COUNT}?createdBefore=2020-01-01`));
+    expect((await empty.json()).data.count).toBe(0);
+  });
+
+  it('rejects a malformed createdAfter with 400 VALIDATION_ERROR', async () => {
+    const res = await countNotes(new NextRequest(`${COUNT}?createdAfter=not-a-date`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
 describe('DELETE /api/v1/notes/:id (soft delete / archive)', () => {
   it('archives a note: 204, hidden from list, visible with includeArchived', async () => {
     const keep = await postNote({ title: 'Keep', content: 'stays' });
@@ -278,15 +337,59 @@ describe('GET /api/v1/notes/search', () => {
     expect(res.status).toBe(200);
 
     const { data } = await res.json();
-    expect(data.total).toBe(2);
+    expect(data.notes).toHaveLength(2);
+    expect(data.next_cursor).toBeNull();
     expect(data.notes.map((n: { title: string }) => n.title).sort()).toEqual([
       'Book notes',
       'Grocery list',
     ]);
   });
 
+  it('paginates matches by cursor, returning next_cursor and a stable order', async () => {
+    // Six matching notes; page through them three at a time.
+    for (let i = 0; i < 6; i++) {
+      await postNote({ title: `Entry ${i}`, content: 'paginate-me' });
+    }
+
+    const first = await searchNotes(
+      new NextRequest(`${BASE}/search?q=paginate-me&limit=3`)
+    );
+    expect(first.status).toBe(200);
+    const firstData = (await first.json()).data;
+    expect(firstData.notes).toHaveLength(3);
+    expect(firstData.next_cursor).toBeTruthy();
+
+    const second = await searchNotes(
+      new NextRequest(
+        `${BASE}/search?q=paginate-me&limit=3&cursor=${encodeURIComponent(
+          firstData.next_cursor
+        )}`
+      )
+    );
+    expect(second.status).toBe(200);
+    const secondData = (await second.json()).data;
+    expect(secondData.notes).toHaveLength(3);
+    expect(secondData.next_cursor).toBeNull();
+
+    // No id appears on both pages and all six are covered (no skip/duplicate).
+    const ids = [...firstData.notes, ...secondData.notes].map(
+      (n: { id: string }) => n.id
+    );
+    expect(new Set(ids).size).toBe(6);
+  });
+
   it('returns 400 VALIDATION_ERROR when q is missing', async () => {
     const res = await searchNotes(new NextRequest(`${BASE}/search`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('returns 400 VALIDATION_ERROR for a malformed cursor', async () => {
+    const res = await searchNotes(
+      new NextRequest(`${BASE}/search?q=milk&cursor=not-a-real-cursor`)
+    );
 
     expect(res.status).toBe(400);
     const { error } = await res.json();

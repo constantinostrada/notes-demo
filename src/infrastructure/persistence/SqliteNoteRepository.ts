@@ -19,9 +19,14 @@ import { DatabaseSync } from 'node:sqlite';
 import { Note } from '@/domain/entities/Note';
 import {
   INoteRepository,
+  NoteCountCriteria,
+  NoteFilterCriteria,
   NoteListCriteria,
   NotePage,
+  NoteSearchCriteria,
+  NoteSearchPage,
   NoteSortField,
+  SearchCursor,
 } from '@/domain/repositories/INoteRepository';
 
 /**
@@ -203,51 +208,56 @@ export class SqliteNoteRepository implements INoteRepository {
     return row !== undefined;
   }
 
-  async search(query: string): Promise<Note[]> {
+  async search(criteria: NoteSearchCriteria): Promise<NoteSearchPage> {
+    const { query, limit, cursor } = criteria;
+
     // Case-insensitive substring match on title or content. LIKE is
     // case-insensitive for ASCII in SQLite; escape user wildcards so a literal
     // `%`/`_` doesn't act as a pattern.
     const pattern = `%${escapeLike(query)}%`;
+    const params: Record<string, string | number> = { pattern };
+
+    // Keyset cursor: only rows strictly after the cursor in the
+    // (created_at DESC, id ASC) ordering — an older note, or the same instant
+    // with a higher id. This keeps paging stable with no skipped/duplicated rows.
+    let cursorClause = '';
+    if (cursor) {
+      cursorClause =
+        'AND (created_at < @cursorCreatedAt OR (created_at = @cursorCreatedAt AND id > @cursorId))';
+      params.cursorCreatedAt = cursor.createdAt;
+      params.cursorId = cursor.id;
+    }
+
+    // Over-fetch one row to learn whether a further page exists without a
+    // separate COUNT. `id ASC` is the stable tiebreaker for equal timestamps.
     const rows = this.db
       .prepare(
         `SELECT * FROM notes
-         WHERE title LIKE @pattern ESCAPE '\\' OR content LIKE @pattern ESCAPE '\\'
-         ORDER BY created_at DESC`
+         WHERE (title LIKE @pattern ESCAPE '\\' OR content LIKE @pattern ESCAPE '\\')
+         ${cursorClause}
+         ORDER BY created_at DESC, id ASC
+         LIMIT @limitPlusOne`
       )
-      .all({ pattern }) as unknown as NoteRow[];
-    return rows.map((row) => this.toEntity(row));
+      .all({ ...params, limitPlusOne: limit + 1 }) as unknown as NoteRow[];
+
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const notes = pageRows.map((row) => this.toEntity(row));
+
+    const lastRow = pageRows[pageRows.length - 1];
+    const nextCursor: SearchCursor | null =
+      hasMore && lastRow ? { createdAt: lastRow.created_at, id: lastRow.id } : null;
+
+    return { notes, nextCursor };
   }
 
   async list(criteria: NoteListCriteria): Promise<NotePage> {
-    const { tag, includeArchived, createdAfter, createdBefore, page, limit, sortField, sortDirection } =
-      criteria;
+    const { page, limit, sortField, sortDirection } = criteria;
     const offset = (page - 1) * limit;
     const orderExpr = ORDER_EXPR[sortField];
     const direction = sortDirection === 'desc' ? 'DESC' : 'ASC';
 
-    // An optional tag filter joins the tag table; the (already-normalized) tag
-    // is matched exactly against the stored canonical form. Archived notes are
-    // excluded (deleted_at IS NULL) unless the caller opts in. Optional
-    // created-at bounds (inclusive) narrow the range; all filters compose via AND.
-    const joinClause = tag ? 'JOIN note_tags t ON t.note_id = n.id' : '';
-    const conditions: string[] = [];
-    const filterParams: Record<string, string | number> = {};
-    if (tag) {
-      conditions.push('t.tag = @tag');
-      filterParams.tag = tag;
-    }
-    if (!includeArchived) {
-      conditions.push('n.deleted_at IS NULL');
-    }
-    if (createdAfter) {
-      conditions.push('n.created_at >= @createdAfter');
-      filterParams.createdAfter = createdAfter.getTime();
-    }
-    if (createdBefore) {
-      conditions.push('n.created_at <= @createdBefore');
-      filterParams.createdBefore = createdBefore.getTime();
-    }
-    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+    const { joinClause, whereClause, filterParams } = buildFilterSql(criteria);
 
     const { total } = this.db
       .prepare(`SELECT COUNT(*) AS total FROM notes n ${joinClause} ${whereClause}`)
@@ -264,6 +274,16 @@ export class SqliteNoteRepository implements INoteRepository {
       .all({ ...filterParams, limit, offset }) as unknown as NoteRow[];
 
     return { notes: rows.map((row) => this.toEntity(row)), total };
+  }
+
+  async count(criteria: NoteCountCriteria): Promise<number> {
+    const { joinClause, whereClause, filterParams } = buildFilterSql(criteria);
+
+    const { total } = this.db
+      .prepare(`SELECT COUNT(*) AS total FROM notes n ${joinClause} ${whereClause}`)
+      .get(filterParams) as { total: number };
+
+    return total;
   }
 
   /** Load a note's tags in stable (alphabetical) order. */
@@ -287,6 +307,41 @@ export class SqliteNoteRepository implements INoteRepository {
       row.color
     );
   }
+}
+
+/**
+ * Build the JOIN/WHERE fragments (and bound parameters) shared by `list` and
+ * `count`. An optional tag filter joins the tag table; the (already-normalized)
+ * tag is matched exactly against the stored canonical form. Archived notes are
+ * excluded (deleted_at IS NULL) unless the caller opts in. Optional created-at
+ * bounds (inclusive) narrow the range; all filters compose via AND.
+ */
+function buildFilterSql(criteria: NoteFilterCriteria): {
+  joinClause: string;
+  whereClause: string;
+  filterParams: Record<string, string | number>;
+} {
+  const { tag, includeArchived, createdAfter, createdBefore } = criteria;
+  const joinClause = tag ? 'JOIN note_tags t ON t.note_id = n.id' : '';
+  const conditions: string[] = [];
+  const filterParams: Record<string, string | number> = {};
+  if (tag) {
+    conditions.push('t.tag = @tag');
+    filterParams.tag = tag;
+  }
+  if (!includeArchived) {
+    conditions.push('n.deleted_at IS NULL');
+  }
+  if (createdAfter) {
+    conditions.push('n.created_at >= @createdAfter');
+    filterParams.createdAfter = createdAfter.getTime();
+  }
+  if (createdBefore) {
+    conditions.push('n.created_at <= @createdBefore');
+    filterParams.createdBefore = createdBefore.getTime();
+  }
+  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  return { joinClause, whereClause, filterParams };
 }
 
 /** Escape LIKE special characters (`\`, `%`, `_`) for use with ESCAPE '\'. */

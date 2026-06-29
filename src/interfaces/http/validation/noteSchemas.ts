@@ -17,6 +17,10 @@ import {
   MAX_LIMIT,
   DEFAULT_SORT,
 } from '@/application/dtos/NoteDTO';
+import {
+  decodeSearchCursor,
+  InvalidCursorError,
+} from '@/application/pagination/searchCursor';
 
 /**
  * Tags payload: an optional array of strings. Shape-only — canonicalization
@@ -116,12 +120,50 @@ export const listNotesSchema = z.object({
     .default(false),
 });
 
-/** Query params for GET /api/v1/notes/search (`q` is required, non-empty). */
+/**
+ * Query params for GET /api/v1/notes/count — the listing's filter knobs only
+ * (tag / created-at range / includeArchived); pagination and sort don't affect
+ * a count. Reuses the listing field definitions so validation stays in lock-step.
+ */
+export const countNotesSchema = listNotesSchema.pick({
+  tag: true,
+  createdAfter: true,
+  createdBefore: true,
+  includeArchived: true,
+});
+
+/**
+ * Query params for GET /api/v1/notes/search. `q` is required and non-empty.
+ * `limit` reuses the listing's bounds; `cursor` is an opaque pagination token
+ * decoded here (at the edge) into the keyset position the use case consumes — a
+ * malformed token yields a 400 VALIDATION_ERROR like any other bad input.
+ */
 export const searchNotesSchema = z.object({
   q: z
     .string({ message: 'Search query (q) is required and must be a string' })
     .trim()
     .min(1, { message: 'Search query (q) cannot be empty' }),
+  limit: z.coerce
+    .number({ message: 'limit must be a number' })
+    .int({ message: 'limit must be an integer' })
+    .min(1, { message: 'limit must be >= 1' })
+    .max(MAX_LIMIT, { message: `limit cannot exceed ${MAX_LIMIT}` })
+    .default(DEFAULT_LIMIT),
+  cursor: z
+    .string({ message: 'cursor must be a string' })
+    .transform((value, ctx) => {
+      try {
+        return decodeSearchCursor(value);
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            error instanceof InvalidCursorError ? error.message : 'cursor is invalid',
+        });
+        return z.NEVER;
+      }
+    })
+    .optional(),
 });
 
 /**
@@ -163,4 +205,5 @@ export type CreateNotePayload = z.infer<typeof createNoteSchema>;
 export type UpdateNotePayload = z.infer<typeof updateNoteSchema>;
 export type SearchNotesQuery = z.infer<typeof searchNotesSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesSchema>;
+export type CountNotesQuery = z.infer<typeof countNotesSchema>;
 export type ImportNotesPayload = z.infer<typeof importNotesSchema>;

@@ -20,6 +20,7 @@ import {
   updateNoteSchema,
   searchNotesSchema,
   listNotesSchema,
+  countNotesSchema,
   importNotesSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
@@ -70,6 +71,25 @@ export class NoteController {
     }
   }
 
+  static async countNotes(rawQuery?: unknown): Promise<ControllerResult> {
+    try {
+      const { tag, includeArchived, createdAfter, createdBefore } =
+        countNotesSchema.parse(rawQuery ?? {});
+
+      const useCase = container.getCountNotesUseCase();
+      const result = await useCase.execute({
+        tag,
+        includeArchived,
+        createdAfter,
+        createdBefore,
+      });
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
   static async updateNote(id: string, body: unknown): Promise<ControllerResult> {
     try {
       const input = updateNoteSchema.parse(body);
@@ -94,12 +114,12 @@ export class NoteController {
     }
   }
 
-  static async searchNotes(rawQuery: unknown): Promise<ControllerResult> {
+  static async searchNotes(rawQuery?: unknown): Promise<ControllerResult> {
     try {
-      const { q } = searchNotesSchema.parse({ q: rawQuery });
+      const { q, cursor, limit } = searchNotesSchema.parse(rawQuery ?? {});
 
       const useCase = container.getSearchNotesUseCase();
-      const result = await useCase.execute({ query: q });
+      const result = await useCase.execute({ query: q, cursor, limit });
 
       return ok(result);
     } catch (error) {

@@ -14,11 +14,10 @@ export type NoteSortField = 'createdAt' | 'updatedAt' | 'title';
 export type SortDirection = 'asc' | 'desc';
 
 /**
- * Criteria for a paginated, sorted (and optionally tag-filtered) listing.
- * `page` is 1-based and `limit` is the page size; both are expected to be
- * already-validated positive integers (bounds are enforced at the edge).
+ * Filters shared by listing and counting. All are optional narrowing rules that
+ * compose via AND; values are expected to be already-validated/normalized.
  */
-export interface NoteListCriteria {
+export interface NoteFilterCriteria {
   /** Optional, already-normalized tag filter. */
   tag?: string;
   /** When false (the default), archived (soft-deleted) notes are excluded. */
@@ -27,16 +26,63 @@ export interface NoteListCriteria {
   createdAfter?: Date;
   /** Optional inclusive upper bound on a note's creation time. */
   createdBefore?: Date;
+}
+
+/**
+ * Criteria for a paginated, sorted (and optionally tag-filtered) listing.
+ * `page` is 1-based and `limit` is the page size; both are expected to be
+ * already-validated positive integers (bounds are enforced at the edge).
+ */
+export interface NoteListCriteria extends NoteFilterCriteria {
   page: number;
   limit: number;
   sortField: NoteSortField;
   sortDirection: SortDirection;
 }
 
+/** Criteria for counting notes — the listing filters without paging/sorting. */
+export type NoteCountCriteria = NoteFilterCriteria;
+
 /** A single page of notes plus the total number of matches (ignoring paging). */
 export interface NotePage {
   notes: Note[];
   total: number;
+}
+
+/**
+ * Keyset cursor identifying a position in the search ordering
+ * (created_at DESC, id ASC). Holds the sort keys of the last returned note so
+ * the next page resumes strictly *after* it — deterministic across requests,
+ * with no skipped/duplicated rows even as notes are created or archived.
+ *
+ * This is the decoded form; the opaque string handed to/received from clients
+ * is encoded in the application layer (see searchCursor codec).
+ */
+export interface SearchCursor {
+  /** Creation time of the last returned note, in epoch milliseconds. */
+  createdAt: number;
+  /** Stable tiebreaker: id of the last returned note. */
+  id: string;
+}
+
+/**
+ * Criteria for a cursor-paginated full-text search. `query` is the (trimmed)
+ * search term; `limit` is the page size (already validated/bounded at the
+ * edge). When `cursor` is set, only notes after that position are returned.
+ */
+export interface NoteSearchCriteria {
+  query: string;
+  limit: number;
+  cursor?: SearchCursor;
+}
+
+/**
+ * A single page of search results. `nextCursor` points at the last note in this
+ * page when more matches remain, or is `null` when this is the final page.
+ */
+export interface NoteSearchPage {
+  notes: Note[];
+  nextCursor: SearchCursor | null;
 }
 
 export interface INoteRepository {
@@ -72,9 +118,11 @@ export interface INoteRepository {
   exists(id: string): Promise<boolean>;
 
   /**
-   * Search notes by title or content
+   * Search notes by title or content, returning one cursor-paginated page.
+   * Results are ordered by creation time (newest first) with `id` as a stable
+   * tiebreaker, so paging via `nextCursor` never skips or duplicates a note.
    */
-  search(query: string): Promise<Note[]>;
+  search(criteria: NoteSearchCriteria): Promise<NoteSearchPage>;
 
   /**
    * List notes with pagination, sorting and an optional tag filter.
@@ -82,4 +130,10 @@ export interface INoteRepository {
    * (so callers can compute pagination metadata).
    */
   list(criteria: NoteListCriteria): Promise<NotePage>;
+
+  /**
+   * Count notes matching the given filters (same rules as `list`, without
+   * paging or sorting). Returns the total number of matches.
+   */
+  count(criteria: NoteCountCriteria): Promise<number>;
 }

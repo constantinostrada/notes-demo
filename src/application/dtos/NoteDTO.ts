@@ -5,6 +5,8 @@
  * DTOs decouple the application layer from domain entities.
  */
 
+import { SearchCursor } from '@/domain/repositories/INoteRepository';
+
 export interface CreateNoteInputDTO {
   title: string;
   content: string;
@@ -46,6 +48,20 @@ export interface GetNoteInputDTO {
 
 export interface SearchNotesInputDTO {
   query: string;
+  /** Page size (defaults to DEFAULT_LIMIT, capped at MAX_LIMIT). */
+  limit?: number;
+  /** Decoded keyset cursor; when set, results resume after this position. */
+  cursor?: SearchCursor;
+}
+
+/**
+ * A cursor-paginated page of search results. `notes` stays top-level so the
+ * existing frontend keeps reading `data.notes`. `next_cursor` is the opaque
+ * token to fetch the following page, or `null` on the last page.
+ */
+export interface SearchNotesOutputDTO {
+  notes: NoteOutputDTO[];
+  next_cursor: string | null;
 }
 
 /**
@@ -89,9 +105,24 @@ export interface ListNotesInputDTO {
   sort?: string;
 }
 
-export interface ListNotesOutputDTO {
-  notes: NoteOutputDTO[];
-  total: number;
+/**
+ * Filters for counting notes — the same narrowing knobs as a listing, minus
+ * pagination and sorting (which don't affect a count).
+ */
+export interface CountNotesInputDTO {
+  /** Optional tag filter; when present, only notes with this tag are counted. */
+  tag?: string;
+  /** Include archived (soft-deleted) notes in the count (defaults to false). */
+  includeArchived?: boolean;
+  /** Inclusive lower bound on a note's creation time (createdAt >= this). */
+  createdAfter?: Date;
+  /** Inclusive upper bound on a note's creation time (createdAt <= this). */
+  createdBefore?: Date;
+}
+
+/** Result of a count: the number of notes matching the filters. */
+export interface CountNotesOutputDTO {
+  count: number;
 }
 
 /**

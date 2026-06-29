@@ -10,6 +10,7 @@ import { SqliteNoteRepository } from '../persistence/SqliteNoteRepository';
 import { CreateNoteUseCase } from '@/application/use-cases/CreateNoteUseCase';
 import { GetNoteUseCase } from '@/application/use-cases/GetNoteUseCase';
 import { ListNotesUseCase } from '@/application/use-cases/ListNotesUseCase';
+import { CountNotesUseCase } from '@/application/use-cases/CountNotesUseCase';
 import { UpdateNoteUseCase } from '@/application/use-cases/UpdateNoteUseCase';
 import { DeleteNoteUseCase } from '@/application/use-cases/DeleteNoteUseCase';
 import { SearchNotesUseCase } from '@/application/use-cases/SearchNotesUseCase';
@@ -87,6 +88,10 @@ class DIContainer {
 
   getListNotesUseCase(): ListNotesUseCase {
     return new ListNotesUseCase(this.getNoteRepository());
+  }
+
+  getCountNotesUseCase(): CountNotesUseCase {
+    return new CountNotesUseCase(this.getNoteRepository());
   }
 
   getUpdateNoteUseCase(): UpdateNoteUseCase {
