@@ -4,6 +4,7 @@ import { CreateNoteUseCase } from '@/application/use-cases/CreateNoteUseCase';
 import { DeleteNoteUseCase } from '@/application/use-cases/DeleteNoteUseCase';
 import { SetReminderUseCase } from '@/application/use-cases/SetReminderUseCase';
 import { ListDueNotesUseCase } from '@/application/use-cases/ListDueNotesUseCase';
+import { CountDueNotesUseCase } from '@/application/use-cases/CountDueNotesUseCase';
 import { NoteNotFoundException } from '@/domain/exceptions/DomainException';
 import { InMemoryNoteRepository } from '@/infrastructure/persistence/InMemoryNoteRepository';
 
@@ -17,6 +18,7 @@ describe('SetReminder / ListDue use cases', () => {
   let deleteNote: DeleteNoteUseCase;
   let setReminder: SetReminderUseCase;
   let listDue: ListDueNotesUseCase;
+  let countDue: CountDueNotesUseCase;
 
   beforeEach(() => {
     repository = new InMemoryNoteRepository();
@@ -24,6 +26,7 @@ describe('SetReminder / ListDue use cases', () => {
     deleteNote = new DeleteNoteUseCase(repository);
     setReminder = new SetReminderUseCase(repository);
     listDue = new ListDueNotesUseCase(repository);
+    countDue = new CountDueNotesUseCase(repository);
   });
 
   it('sets a reminder (dueAt) and persists it', async () => {
@@ -90,5 +93,45 @@ describe('SetReminder / ListDue use cases', () => {
 
     const { notes } = await listDue.execute();
     expect(notes.map((n) => n.id)).toEqual([older.id, newer.id]);
+  });
+
+  describe('CountDueNotesUseCase', () => {
+    it('counts zero when there are no overdue notes', async () => {
+      expect(await countDue.execute()).toEqual({ count: 0 });
+    });
+
+    it('counts only overdue notes, excluding future and reminder-less ones', async () => {
+      const overdue = await createNote.execute({ title: 'Overdue', content: 'a' });
+      const upcoming = await createNote.execute({ title: 'Upcoming', content: 'b' });
+      await createNote.execute({ title: 'No reminder', content: 'c' }); // never due
+
+      await setReminder.execute({ id: overdue.id, dueAt: PAST });
+      await setReminder.execute({ id: upcoming.id, dueAt: FUTURE });
+
+      expect(await countDue.execute()).toEqual({ count: 1 });
+    });
+
+    it('never counts an archived note, even with a past reminder', async () => {
+      const active = await createNote.execute({ title: 'Active overdue', content: 'a' });
+      const archived = await createNote.execute({ title: 'Archived overdue', content: 'b' });
+      await setReminder.execute({ id: active.id, dueAt: PAST });
+      await setReminder.execute({ id: archived.id, dueAt: PAST });
+      await deleteNote.execute({ id: archived.id });
+
+      expect(await countDue.execute()).toEqual({ count: 1 });
+    });
+
+    it('agrees with the due listing length (same predicate)', async () => {
+      const a = await createNote.execute({ title: 'A', content: 'x' });
+      const b = await createNote.execute({ title: 'B', content: 'y' });
+      const future = await createNote.execute({ title: 'C', content: 'z' });
+      await setReminder.execute({ id: a.id, dueAt: PAST });
+      await setReminder.execute({ id: b.id, dueAt: PAST });
+      await setReminder.execute({ id: future.id, dueAt: FUTURE });
+
+      const { notes } = await listDue.execute();
+      const { count } = await countDue.execute();
+      expect(count).toBe(notes.length);
+    });
   });
 });

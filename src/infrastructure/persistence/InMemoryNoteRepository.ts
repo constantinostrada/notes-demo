@@ -140,6 +140,13 @@ export class InMemoryNoteRepository implements INoteRepository {
       .sort(compareDue);
   }
 
+  async countDue(now: Date): Promise<number> {
+    // Same predicate as findDue (Note.isOverdue, which excludes archived
+    // notes), so the count always matches the listing length.
+    return Array.from(this.notes.values()).filter((note) => note.isOverdue(now))
+      .length;
+  }
+
   async list(criteria: NoteListCriteria): Promise<NotePage> {
     const { page, limit, sortField, sortDirection } = criteria;
 

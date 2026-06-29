@@ -150,6 +150,14 @@ export interface INoteRepository {
   findDue(now: Date): Promise<Note[]>;
 
   /**
+   * Count overdue notes — applying the exact same predicate as `findDue`
+   * (`dueAt` strictly in the past relative to `now`, archived notes excluded).
+   * Returns the total number of matches, so the count always agrees with the
+   * length of the `findDue` listing.
+   */
+  countDue(now: Date): Promise<number>;
+
+  /**
    * List notes with pagination, sorting and an optional tag filter.
    * Returns the requested page together with the total number of matches
    * (so callers can compute pagination metadata).

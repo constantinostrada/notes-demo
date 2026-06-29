@@ -15,6 +15,7 @@ import { POST as pinNoteById } from '@/app/api/v1/notes/[id]/pin/route';
 import { POST as unpinNoteById } from '@/app/api/v1/notes/[id]/unpin/route';
 import { PUT as setReminderById } from '@/app/api/v1/notes/[id]/reminder/route';
 import { GET as listDueNotes } from '@/app/api/v1/notes/due/route';
+import { GET as countDueNotes } from '@/app/api/v1/notes/due/count/route';
 
 /**
  * Integration tests for the Notes HTTP API.
@@ -556,6 +557,42 @@ describe('Notes reminders (PUT /:id/reminder + GET /notes/due)', () => {
     expect(res.status).toBe(200);
     const { data } = await res.json();
     expect(data.notes.map((n: { id: string }) => n.id)).toEqual([overdue.id]);
+  });
+
+  it('counts overdue notes, matching the due listing (same predicate)', async () => {
+    const overdue = await postNote({ title: 'Overdue', content: 'a' });
+    const upcoming = await postNote({ title: 'Upcoming', content: 'b' });
+    const archived = await postNote({ title: 'Archived overdue', content: 'c' });
+
+    await setReminder(overdue.id, { dueAt: PAST });
+    await setReminder(upcoming.id, { dueAt: FUTURE });
+    await setReminder(archived.id, { dueAt: PAST });
+
+    // Archive the third note; like the listing, it must drop out of the count.
+    const del = await deleteNoteById(new NextRequest(`${BASE}/${archived.id}`), {
+      params: { id: archived.id },
+    });
+    expect(del.status).toBe(204);
+
+    const countRes = await countDueNotes(new NextRequest(`${DUE}/count`));
+    expect(countRes.status).toBe(200);
+    const { data: countData } = await countRes.json();
+    expect(countData.count).toBe(1);
+
+    // The count agrees with the length of the due listing.
+    const listRes = await listDueNotes(new NextRequest(DUE));
+    const { data: listData } = await listRes.json();
+    expect(countData.count).toBe(listData.notes.length);
+  });
+
+  it('counts zero overdue notes when none are due', async () => {
+    const upcoming = await postNote({ title: 'Upcoming', content: 'a' });
+    await setReminder(upcoming.id, { dueAt: FUTURE });
+
+    const countRes = await countDueNotes(new NextRequest(`${DUE}/count`));
+    expect(countRes.status).toBe(200);
+    const { data } = await countRes.json();
+    expect(data.count).toBe(0);
   });
 
   it('returns 404 NOTE_NOT_FOUND when setting a reminder on an unknown id', async () => {

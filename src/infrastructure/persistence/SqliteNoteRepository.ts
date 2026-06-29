@@ -35,6 +35,17 @@ import {
  * (never interpolating caller input) keeps the dynamic ORDER BY injection-safe.
  * Titles sort case-insensitively via COLLATE NOCASE.
  */
+/**
+ * Shared WHERE predicate for overdue notes, used by both `findDue` (listing)
+ * and `countDue`. A note is overdue when it carries a reminder (`due_at`)
+ * strictly in the past relative to `@now` (epoch ms, inherently UTC). Archived
+ * notes are never overdue, so `deleted_at IS NULL` is applied first — mirroring
+ * `Note.isOverdue`'s archived-wins rule. Keeping one predicate guarantees the
+ * count and the listing stay in lockstep.
+ */
+const DUE_WHERE =
+  'deleted_at IS NULL AND due_at IS NOT NULL AND due_at < @now';
+
 const ORDER_EXPR: Record<NoteSortField, string> = {
   createdAt: 'n.created_at',
   updatedAt: 'n.updated_at',
@@ -305,21 +316,28 @@ export class SqliteNoteRepository implements INoteRepository {
   }
 
   async findDue(now: Date): Promise<Note[]> {
-    // Overdue notes: a reminder strictly in the past relative to `now` (epoch
-    // ms, inherently UTC). Archived notes are never overdue, so deleted_at IS
-    // NULL is applied first — mirroring Note.isOverdue's archived-wins rule.
-    // Ordered most-overdue first, with id ASC as a stable tiebreaker.
+    // Overdue notes ordered most-overdue first, with id ASC as a stable
+    // tiebreaker. The predicate (DUE_WHERE) is shared with countDue so the two
+    // read paths can never diverge.
     const rows = this.db
       .prepare(
         `SELECT * FROM notes
-         WHERE deleted_at IS NULL
-         AND due_at IS NOT NULL
-         AND due_at < @now
+         WHERE ${DUE_WHERE}
          ORDER BY due_at ASC, id ASC`
       )
       .all({ now: now.getTime() }) as unknown as NoteRow[];
 
     return rows.map((row) => this.toEntity(row));
+  }
+
+  async countDue(now: Date): Promise<number> {
+    // Counts via the exact same predicate as findDue (DUE_WHERE), so the count
+    // always agrees with the listing length.
+    const { total } = this.db
+      .prepare(`SELECT COUNT(*) AS total FROM notes WHERE ${DUE_WHERE}`)
+      .get({ now: now.getTime() }) as { total: number };
+
+    return total;
   }
 
   async list(criteria: NoteListCriteria): Promise<NotePage> {

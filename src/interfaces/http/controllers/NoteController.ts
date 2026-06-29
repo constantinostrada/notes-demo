@@ -188,6 +188,17 @@ export class NoteController {
     }
   }
 
+  static async countDueNotes(): Promise<ControllerResult> {
+    try {
+      const useCase = container.getCountDueNotesUseCase();
+      const result = await useCase.execute();
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
   static async exportNotes(): Promise<ControllerResult> {
     try {
       const useCase = container.getExportNotesUseCase();
