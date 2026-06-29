@@ -76,12 +76,14 @@ export class InMemoryNoteRepository implements INoteRepository {
 
     // Match on title or content, then order newest-first with id as a stable
     // tiebreaker (mirrors the SQLite repository's ORDER BY) so cursor paging is
-    // deterministic.
+    // deterministic. Archived (soft-deleted) notes are excluded — search is a
+    // read endpoint and must never surface notes carrying a deletedAt tombstone.
     const matches = Array.from(this.notes.values())
       .filter(
         (note) =>
-          note.title.toLowerCase().includes(lowerQuery) ||
-          note.content.toLowerCase().includes(lowerQuery)
+          !note.isArchived() &&
+          (note.title.toLowerCase().includes(lowerQuery) ||
+            note.content.toLowerCase().includes(lowerQuery))
       )
       .sort(compareSearch);
 

@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CreateNoteUseCase } from '@/application/use-cases/CreateNoteUseCase';
+import { DeleteNoteUseCase } from '@/application/use-cases/DeleteNoteUseCase';
 import { SearchNotesUseCase } from '@/application/use-cases/SearchNotesUseCase';
 import { decodeSearchCursor } from '@/application/pagination/searchCursor';
 import { InMemoryNoteRepository } from '@/infrastructure/persistence/InMemoryNoteRepository';
@@ -9,11 +10,13 @@ describe('SearchNotesUseCase', () => {
   let repository: InMemoryNoteRepository;
   let search: SearchNotesUseCase;
   let createNote: CreateNoteUseCase;
+  let deleteNote: DeleteNoteUseCase;
 
   beforeEach(() => {
     repository = new InMemoryNoteRepository();
     search = new SearchNotesUseCase(repository);
     createNote = new CreateNoteUseCase(repository);
+    deleteNote = new DeleteNoteUseCase(repository);
   });
 
   it('matches notes by title or content, case-insensitively', async () => {
@@ -27,6 +30,17 @@ describe('SearchNotesUseCase', () => {
     expect(result.next_cursor).toBeNull();
     const titles = result.notes.map((n) => n.title).sort();
     expect(titles).toEqual(['Grocery list', 'Reading']);
+  });
+
+  it('excludes archived (soft-deleted) notes from search results', async () => {
+    const active = await createNote.execute({ title: 'Milk run', content: 'buy milk' });
+    const archived = await createNote.execute({ title: 'Old milk', content: 'milk note' });
+
+    await deleteNote.execute({ id: archived.id });
+
+    const result = await search.execute({ query: 'milk' });
+
+    expect(result.notes.map((n) => n.id)).toEqual([active.id]);
   });
 
   it('trims the query before searching', async () => {

@@ -230,10 +230,13 @@ export class SqliteNoteRepository implements INoteRepository {
 
     // Over-fetch one row to learn whether a further page exists without a
     // separate COUNT. `id ASC` is the stable tiebreaker for equal timestamps.
+    // Archived (soft-deleted) notes are excluded — search is a read endpoint and
+    // must never surface notes carrying a deleted_at tombstone.
     const rows = this.db
       .prepare(
         `SELECT * FROM notes
          WHERE (title LIKE @pattern ESCAPE '\\' OR content LIKE @pattern ESCAPE '\\')
+         AND deleted_at IS NULL
          ${cursorClause}
          ORDER BY created_at DESC, id ASC
          LIMIT @limitPlusOne`
