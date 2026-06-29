@@ -27,7 +27,9 @@ export class Note {
     /** When set, the note is archived (soft-deleted); null means active. */
     private _deletedAt: Date | null,
     /** Optional `#RRGGBB` colour tag; null means no colour set. */
-    private _color: string | null
+    private _color: string | null,
+    /** Whether the note is pinned (surfaced in the pinned listing). */
+    private _isPinned: boolean
   ) {
     this.validateTitle(this._title);
     this._tags = Note.normalizeTags(tags);
@@ -46,7 +48,7 @@ export class Note {
     color: string | null = null
   ): Note {
     const now = new Date();
-    return new Note(id, title, content, tags, now, now, null, color);
+    return new Note(id, title, content, tags, now, now, null, color, false);
   }
 
   /**
@@ -60,9 +62,20 @@ export class Note {
     createdAt: Date,
     updatedAt: Date,
     deletedAt: Date | null = null,
-    color: string | null = null
+    color: string | null = null,
+    isPinned: boolean = false
   ): Note {
-    return new Note(id, title, content, tags, createdAt, updatedAt, deletedAt, color);
+    return new Note(
+      id,
+      title,
+      content,
+      tags,
+      createdAt,
+      updatedAt,
+      deletedAt,
+      color,
+      isPinned
+    );
   }
 
   /**
@@ -180,6 +193,42 @@ export class Note {
   }
 
   /**
+   * Pin the note. Business rule: an archived note cannot be pinned. Idempotent:
+   * pinning an already-pinned note is a no-op (no spurious `updatedAt` bump).
+   */
+  pin(): void {
+    this.assertNotArchived('pin');
+    if (this._isPinned) {
+      return;
+    }
+    this._isPinned = true;
+    this._updatedAt = new Date();
+  }
+
+  /**
+   * Unpin the note. Business rule: an archived note cannot be (un)pinned.
+   * Idempotent: unpinning an already-unpinned note is a no-op.
+   */
+  unpin(): void {
+    this.assertNotArchived('unpin');
+    if (!this._isPinned) {
+      return;
+    }
+    this._isPinned = false;
+    this._updatedAt = new Date();
+  }
+
+  /**
+   * Guard: pinning is only meaningful for active notes. Archived notes are
+   * excluded from the pinned listing, so changing their pin state is rejected.
+   */
+  private assertNotArchived(action: string): void {
+    if (this._deletedAt !== null) {
+      throw new InvalidNoteException(`Cannot ${action} an archived note`);
+    }
+  }
+
+  /**
    * Check if the note is empty (no content)
    */
   isEmpty(): boolean {
@@ -230,5 +279,10 @@ export class Note {
   /** Optional `#RRGGBB` colour, or null when the note has no colour. */
   get color(): string | null {
     return this._color;
+  }
+
+  /** Whether the note is pinned. */
+  get isPinned(): boolean {
+    return this._isPinned;
   }
 }

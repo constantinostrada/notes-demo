@@ -85,6 +85,16 @@ export interface NoteSearchPage {
   nextCursor: SearchCursor | null;
 }
 
+/**
+ * Criteria for a cursor-paginated listing of pinned notes. Shares the search
+ * keyset model (same `cursor`/`limit`, same `created_at DESC, id ASC` order) so
+ * paging behaves identically. Archived notes are always excluded.
+ */
+export interface NotePinnedCriteria {
+  limit: number;
+  cursor?: SearchCursor;
+}
+
 export interface INoteRepository {
   /**
    * Save a note (create or update)
@@ -123,6 +133,13 @@ export interface INoteRepository {
    * tiebreaker, so paging via `nextCursor` never skips or duplicates a note.
    */
   search(criteria: NoteSearchCriteria): Promise<NoteSearchPage>;
+
+  /**
+   * List pinned notes, returning one cursor-paginated page. Like `search`,
+   * results are ordered newest-first with `id` as a stable tiebreaker and
+   * archived (soft-deleted) notes are always excluded.
+   */
+  listPinned(criteria: NotePinnedCriteria): Promise<NoteSearchPage>;
 
   /**
    * List notes with pagination, sorting and an optional tag filter.

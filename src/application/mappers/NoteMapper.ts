@@ -23,6 +23,7 @@ export class NoteMapper {
       updatedAt: note.updatedAt.toISOString(),
       deletedAt: note.deletedAt ? note.deletedAt.toISOString() : null,
       color: note.color,
+      isPinned: note.isPinned,
     };
   }
 

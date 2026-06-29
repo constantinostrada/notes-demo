@@ -13,6 +13,7 @@ import {
   NoteFilterCriteria,
   NoteListCriteria,
   NotePage,
+  NotePinnedCriteria,
   NoteSearchCriteria,
   NoteSearchPage,
   NoteSortField,
@@ -34,6 +35,7 @@ export class InMemoryNoteRepository implements INoteRepository {
       updatedAt: note.updatedAt,
       deletedAt: note.deletedAt,
       color: note.color,
+      isPinned: note.isPinned,
     };
 
     // Reconstitute to create a fresh instance
@@ -45,7 +47,8 @@ export class InMemoryNoteRepository implements INoteRepository {
       serialized.createdAt,
       serialized.updatedAt,
       serialized.deletedAt,
-      serialized.color
+      serialized.color,
+      serialized.isPinned
     );
 
     this.notes.set(note.id, persistedNote);
@@ -88,6 +91,30 @@ export class InMemoryNoteRepository implements INoteRepository {
       .sort(compareSearch);
 
     // Keyset: drop everything up to and including the cursor position.
+    const afterCursor = cursor
+      ? matches.filter((note) => isAfterCursor(note, cursor))
+      : matches;
+
+    // Over-fetch one row to learn whether a further page exists.
+    const page = afterCursor.slice(0, limit);
+    const hasMore = afterCursor.length > limit;
+    const last = page[page.length - 1];
+    const nextCursor: SearchCursor | null =
+      hasMore && last ? { createdAt: last.createdAt.getTime(), id: last.id } : null;
+
+    return { notes: page, nextCursor };
+  }
+
+  async listPinned(criteria: NotePinnedCriteria): Promise<NoteSearchPage> {
+    const { limit, cursor } = criteria;
+
+    // Only pinned, active notes — archived (soft-deleted) notes never surface
+    // here. Same ordering/keyset as search so paging is stable across both
+    // backends.
+    const matches = Array.from(this.notes.values())
+      .filter((note) => note.isPinned && !note.isArchived())
+      .sort(compareSearch);
+
     const afterCursor = cursor
       ? matches.filter((note) => isAfterCursor(note, cursor))
       : matches;

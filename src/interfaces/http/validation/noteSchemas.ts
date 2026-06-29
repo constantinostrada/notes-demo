@@ -167,6 +167,13 @@ export const searchNotesSchema = z.object({
 });
 
 /**
+ * Query params for GET /api/v1/notes/pinned. Same cursor pagination as search
+ * (`limit` bounds + opaque `cursor` decoded at the edge), minus the `q` term —
+ * the listing is implicitly filtered to pinned notes.
+ */
+export const pinnedNotesSchema = searchNotesSchema.omit({ q: true });
+
+/**
  * One note inside an import payload. Shape-only validation: business invariants
  * (title length, tag rules) stay in the Note entity. `id`/timestamps are
  * optional so an export snapshot can be re-imported unchanged — when present
@@ -192,6 +199,7 @@ const importNoteSchema = z.object({
     .nullable()
     .optional(),
   color: colorSchema.nullable().optional(),
+  isPinned: z.boolean({ message: 'isPinned must be a boolean' }).optional(),
 });
 
 /** Body for POST /api/v1/notes/import (a non-empty array under `notes`). */
@@ -205,5 +213,6 @@ export type CreateNotePayload = z.infer<typeof createNoteSchema>;
 export type UpdateNotePayload = z.infer<typeof updateNoteSchema>;
 export type SearchNotesQuery = z.infer<typeof searchNotesSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesSchema>;
+export type PinnedNotesQuery = z.infer<typeof pinnedNotesSchema>;
 export type CountNotesQuery = z.infer<typeof countNotesSchema>;
 export type ImportNotesPayload = z.infer<typeof importNotesSchema>;

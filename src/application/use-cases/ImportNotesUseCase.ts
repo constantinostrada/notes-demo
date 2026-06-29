@@ -83,7 +83,8 @@ export class ImportNotesUseCase {
       createdAt,
       updatedAt,
       deletedAt,
-      raw.color ?? null
+      raw.color ?? null,
+      raw.isPinned ?? false
     );
   }
 }

@@ -10,6 +10,9 @@ import {
 } from '@/app/api/v1/notes/[id]/route';
 import { GET as searchNotes } from '@/app/api/v1/notes/search/route';
 import { GET as countNotes } from '@/app/api/v1/notes/count/route';
+import { GET as listPinnedNotes } from '@/app/api/v1/notes/pinned/route';
+import { POST as pinNoteById } from '@/app/api/v1/notes/[id]/pin/route';
+import { POST as unpinNoteById } from '@/app/api/v1/notes/[id]/unpin/route';
 
 /**
  * Integration tests for the Notes HTTP API.
@@ -391,6 +394,114 @@ describe('GET /api/v1/notes/search', () => {
       new NextRequest(`${BASE}/search?q=milk&cursor=not-a-real-cursor`)
     );
 
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('Notes pinning (POST /:id/pin, /:id/unpin + GET /notes/pinned)', () => {
+  const PINNED = `${BASE}/pinned`;
+
+  /** POST /:id/pin and return the parsed response (status + body). */
+  async function pin(id: string) {
+    const res = await pinNoteById(new NextRequest(`${BASE}/${id}/pin`, { method: 'POST' }), {
+      params: { id },
+    });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  }
+
+  /** POST /:id/unpin and return the parsed response (status + body). */
+  async function unpin(id: string) {
+    const res = await unpinNoteById(
+      new NextRequest(`${BASE}/${id}/unpin`, { method: 'POST' }),
+      { params: { id } }
+    );
+    return { status: res.status, json: await res.json().catch(() => null) };
+  }
+
+  it('pins and unpins a note, toggling isPinned', async () => {
+    const created = await postNote({ title: 'Toggle', content: 'x' });
+    expect(created.isPinned).toBe(false);
+
+    const pinned = await pin(created.id);
+    expect(pinned.status).toBe(200);
+    expect(pinned.json.data.isPinned).toBe(true);
+
+    const unpinned = await unpin(created.id);
+    expect(unpinned.status).toBe(200);
+    expect(unpinned.json.data.isPinned).toBe(false);
+  });
+
+  it('lists only pinned, non-archived notes, cursor-paginated', async () => {
+    const a = await postNote({ title: 'Pinned A', content: 'a' });
+    const b = await postNote({ title: 'Pinned B', content: 'b' });
+    await postNote({ title: 'Plain', content: 'c' }); // never pinned
+
+    await pin(a.id);
+    await pin(b.id);
+
+    const res = await listPinnedNotes(new NextRequest(PINNED));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.notes).toHaveLength(2);
+    expect(data.next_cursor).toBeNull();
+    expect(new Set(data.notes.map((n: { id: string }) => n.id))).toEqual(
+      new Set([a.id, b.id])
+    );
+
+    // Page size 1 → first page returns a next_cursor for the second.
+    const firstPage = await listPinnedNotes(new NextRequest(`${PINNED}?limit=1`));
+    const firstData = (await firstPage.json()).data;
+    expect(firstData.notes).toHaveLength(1);
+    expect(firstData.next_cursor).toBeTruthy();
+
+    const secondPage = await listPinnedNotes(
+      new NextRequest(`${PINNED}?limit=1&cursor=${encodeURIComponent(firstData.next_cursor)}`)
+    );
+    const secondData = (await secondPage.json()).data;
+    expect(secondData.notes).toHaveLength(1);
+    // The two pages together cover both pinned notes with no overlap.
+    const ids = [...firstData.notes, ...secondData.notes].map((n: { id: string }) => n.id);
+    expect(new Set(ids)).toEqual(new Set([a.id, b.id]));
+  });
+
+  it('excludes an archived note from the pinned listing', async () => {
+    const keep = await postNote({ title: 'Keep pinned', content: 'a' });
+    const gone = await postNote({ title: 'Pinned then archived', content: 'b' });
+    await pin(keep.id);
+    await pin(gone.id);
+
+    const del = await deleteNoteById(new NextRequest(`${BASE}/${gone.id}`), {
+      params: { id: gone.id },
+    });
+    expect(del.status).toBe(204);
+
+    const res = await listPinnedNotes(new NextRequest(PINNED));
+    const { data } = await res.json();
+    expect(data.notes.map((n: { id: string }) => n.id)).toEqual([keep.id]);
+  });
+
+  it('returns 404 NOTE_NOT_FOUND when pinning an unknown id', async () => {
+    const { status, json } = await pin('does-not-exist');
+    expect(status).toBe(404);
+    expect(json.error.code).toBe('NOTE_NOT_FOUND');
+  });
+
+  it('returns 422 INVALID_NOTE when pinning an archived note', async () => {
+    const created = await postNote({ title: 'Archive me', content: 'x' });
+    const del = await deleteNoteById(new NextRequest(`${BASE}/${created.id}`), {
+      params: { id: created.id },
+    });
+    expect(del.status).toBe(204);
+
+    const { status, json } = await pin(created.id);
+    expect(status).toBe(422);
+    expect(json.error.code).toBe('INVALID_NOTE');
+  });
+
+  it('returns 400 VALIDATION_ERROR for a malformed pinned cursor', async () => {
+    const res = await listPinnedNotes(new NextRequest(`${PINNED}?cursor=not-a-real-cursor`));
     expect(res.status).toBe(400);
     const { error } = await res.json();
     expect(error.code).toBe('VALIDATION_ERROR');

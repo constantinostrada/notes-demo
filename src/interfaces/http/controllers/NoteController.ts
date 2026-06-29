@@ -22,6 +22,7 @@ import {
   listNotesSchema,
   countNotesSchema,
   importNotesSchema,
+  pinnedNotesSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
@@ -120,6 +121,41 @@ export class NoteController {
 
       const useCase = container.getSearchNotesUseCase();
       const result = await useCase.execute({ query: q, cursor, limit });
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async pinNote(id: string): Promise<ControllerResult> {
+    try {
+      const useCase = container.getPinNoteUseCase();
+      const result = await useCase.execute({ id });
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async unpinNote(id: string): Promise<ControllerResult> {
+    try {
+      const useCase = container.getUnpinNoteUseCase();
+      const result = await useCase.execute({ id });
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async listPinnedNotes(rawQuery?: unknown): Promise<ControllerResult> {
+    try {
+      const { cursor, limit } = pinnedNotesSchema.parse(rawQuery ?? {});
+
+      const useCase = container.getListPinnedNotesUseCase();
+      const result = await useCase.execute({ cursor, limit });
 
       return ok(result);
     } catch (error) {

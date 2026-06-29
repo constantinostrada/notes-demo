@@ -7,9 +7,11 @@
  *   - Base prefix:        /api/v1
  *   - Notes collection:   /api/v1/notes  (list supports ?page=&limit=&sort=&tag=&createdAfter=&createdBefore=)
  *   - Notes search:       /api/v1/notes/search?q= (cursor-paginated via &cursor=&limit=)
+ *   - Notes pinned:       /api/v1/notes/pinned (cursor-paginated via &cursor=&limit=)
  *   - Notes export:       /api/v1/notes/export
  *   - Notes import:       /api/v1/notes/import
  *   - Single note:        /api/v1/notes/:id
+ *   - Pin / unpin note:   /api/v1/notes/:id/pin, /api/v1/notes/:id/unpin (POST)
  *
  * The Next.js App Router derives server paths from the folder structure
  * (`src/app/api/v1/notes/...`), so this module is the client-facing mirror
@@ -68,10 +70,26 @@ export const notesApi = {
     if (params.cursor) qs.set('cursor', params.cursor);
     return `${API_BASE}/notes/search?${qs.toString()}`;
   },
+  /**
+   * Pinned endpoint: list pinned notes (GET) with optional cursor pagination.
+   * Reuses the search pagination params; the server fills in defaults and
+   * returns `next_cursor` to fetch the following page.
+   */
+  pinned: (params: SearchNotesParams = {}) => {
+    const qs = new URLSearchParams();
+    if (params.limit != null) qs.set('limit', String(params.limit));
+    if (params.cursor) qs.set('cursor', params.cursor);
+    const query = qs.toString();
+    return query ? `${API_BASE}/notes/pinned?${query}` : `${API_BASE}/notes/pinned`;
+  },
   /** Export endpoint: download every note as a JSON snapshot (GET). */
   export: () => `${API_BASE}/notes/export`,
   /** Import endpoint: load an array of notes from a JSON payload (POST). */
   import: () => `${API_BASE}/notes/import`,
   /** Single-resource endpoint: get (GET), update (PUT), delete (DELETE). */
   resource: (id: string) => `${API_BASE}/notes/${id}`,
+  /** Pin a note (POST). */
+  pin: (id: string) => `${API_BASE}/notes/${id}/pin`,
+  /** Unpin a note (POST). */
+  unpin: (id: string) => `${API_BASE}/notes/${id}/unpin`,
 };

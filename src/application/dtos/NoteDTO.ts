@@ -36,6 +36,8 @@ export interface NoteOutputDTO {
   deletedAt: string | null;
   /** `#RRGGBB` colour, or null when the note has no colour. */
   color: string | null;
+  /** Whether the note is pinned. */
+  isPinned: boolean;
 }
 
 export interface DeleteNoteInputDTO {
@@ -62,6 +64,31 @@ export interface SearchNotesInputDTO {
 export interface SearchNotesOutputDTO {
   notes: NoteOutputDTO[];
   next_cursor: string | null;
+}
+
+/**
+ * Input for listing pinned notes — same cursor pagination knobs as search,
+ * minus the query (the listing is implicitly filtered to `isPinned`).
+ */
+export interface ListPinnedNotesInputDTO {
+  /** Page size (defaults to DEFAULT_LIMIT, capped at MAX_LIMIT). */
+  limit?: number;
+  /** Decoded keyset cursor; when set, results resume after this position. */
+  cursor?: SearchCursor;
+}
+
+/**
+ * A cursor-paginated page of pinned notes. Mirrors the search output contract
+ * ({ notes, next_cursor }) since both share the keyset iteration model.
+ */
+export interface ListPinnedNotesOutputDTO {
+  notes: NoteOutputDTO[];
+  next_cursor: string | null;
+}
+
+/** Input for pinning/unpinning a single note. */
+export interface SetPinInputDTO {
+  id: string;
 }
 
 /**
@@ -140,6 +167,7 @@ export interface ImportNoteInputDTO {
   updatedAt?: string;
   deletedAt?: string | null;
   color?: string | null;
+  isPinned?: boolean;
 }
 
 export interface ImportNotesInputDTO {
