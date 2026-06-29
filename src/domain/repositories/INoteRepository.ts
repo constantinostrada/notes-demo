@@ -23,6 +23,10 @@ export interface NoteListCriteria {
   tag?: string;
   /** When false (the default), archived (soft-deleted) notes are excluded. */
   includeArchived: boolean;
+  /** Optional inclusive lower bound on a note's creation time. */
+  createdAfter?: Date;
+  /** Optional inclusive upper bound on a note's creation time. */
+  createdBefore?: Date;
   page: number;
   limit: number;
   sortField: NoteSortField;

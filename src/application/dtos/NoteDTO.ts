@@ -77,6 +77,10 @@ export interface ListNotesInputDTO {
   tag?: string;
   /** Include archived (soft-deleted) notes in the listing (defaults to false). */
   includeArchived?: boolean;
+  /** Inclusive lower bound on a note's creation time (createdAt >= this). */
+  createdAfter?: Date;
+  /** Inclusive upper bound on a note's creation time (createdAt <= this). */
+  createdBefore?: Date;
   /** 1-based page number (defaults to DEFAULT_PAGE). */
   page?: number;
   /** Page size (defaults to DEFAULT_LIMIT). */

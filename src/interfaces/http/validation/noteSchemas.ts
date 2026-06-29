@@ -35,6 +35,20 @@ const colorSchema = z
     message: 'Color must be a hex string in #RRGGBB format',
   });
 
+/**
+ * An optional ISO 8601 date *or* datetime filter (e.g. `2026-06-29` or
+ * `2026-06-29T10:00:00Z`), parsed into a `Date`. A malformed value throws a
+ * ZodError → 400 VALIDATION_ERROR via the central `mapError`. Bare dates are
+ * read as UTC midnight, matching how timestamps are stored.
+ */
+const isoDateFilter = (field: string) =>
+  z
+    .union([z.iso.datetime(), z.iso.date()], {
+      message: `${field} must be an ISO 8601 date or datetime`,
+    })
+    .transform((value) => new Date(value))
+    .optional();
+
 /** Body for POST /api/v1/notes */
 export const createNoteSchema = z.object({
   title: z
@@ -72,6 +86,10 @@ export const updateNoteSchema = z
  */
 export const listNotesSchema = z.object({
   tag: z.string().trim().min(1, { message: 'Tag filter cannot be empty' }).optional(),
+  // Optional inclusive created-at bounds (combine with tag/archived). Each is an
+  // ISO 8601 date or datetime; an invalid value yields a 400 VALIDATION_ERROR.
+  createdAfter: isoDateFilter('createdAfter'),
+  createdBefore: isoDateFilter('createdBefore'),
   page: z.coerce
     .number({ message: 'page must be a number' })
     .int({ message: 'page must be an integer' })

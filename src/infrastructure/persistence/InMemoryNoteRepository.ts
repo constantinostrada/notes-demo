@@ -77,15 +77,23 @@ export class InMemoryNoteRepository implements INoteRepository {
   }
 
   async list(criteria: NoteListCriteria): Promise<NotePage> {
-    const { tag, includeArchived, page, limit, sortField, sortDirection } = criteria;
+    const { tag, includeArchived, createdAfter, createdBefore, page, limit, sortField, sortDirection } =
+      criteria;
 
     // The tag arrives already normalized (see Note.normalizeTag); note.tags are
     // stored in their canonical form too, so an exact match is correct. Archived
-    // notes are excluded unless the caller explicitly opts in.
-    const all = Array.from(this.notes.values()).filter(
-      (note) => includeArchived || !note.isArchived()
-    );
-    const filtered = tag ? all.filter((note) => note.tags.includes(tag)) : all;
+    // notes are excluded unless the caller explicitly opts in. Optional created-at
+    // bounds (inclusive) narrow the range; all filters compose via AND.
+    const afterMs = createdAfter?.getTime();
+    const beforeMs = createdBefore?.getTime();
+    const filtered = Array.from(this.notes.values()).filter((note) => {
+      if (!includeArchived && note.isArchived()) return false;
+      if (tag && !note.tags.includes(tag)) return false;
+      const createdMs = note.createdAt.getTime();
+      if (afterMs !== undefined && createdMs < afterMs) return false;
+      if (beforeMs !== undefined && createdMs > beforeMs) return false;
+      return true;
+    });
 
     const sorted = filtered.sort((a, b) =>
       compareNotes(a, b, sortField, sortDirection)

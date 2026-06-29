@@ -5,7 +5,7 @@
  *
  * Convention: versioned, plural, resource-oriented paths under `/api/v{n}`.
  *   - Base prefix:        /api/v1
- *   - Notes collection:   /api/v1/notes  (list supports ?page=&limit=&sort=&tag=)
+ *   - Notes collection:   /api/v1/notes  (list supports ?page=&limit=&sort=&tag=&createdAfter=&createdBefore=)
  *   - Notes search:       /api/v1/notes/search?q=
  *   - Notes export:       /api/v1/notes/export
  *   - Notes import:       /api/v1/notes/import
@@ -25,6 +25,10 @@ export interface ListNotesParams {
   limit?: number;
   sort?: string;
   tag?: string;
+  /** Inclusive lower bound on creation time (ISO 8601 date or datetime). */
+  createdAfter?: string;
+  /** Inclusive upper bound on creation time (ISO 8601 date or datetime). */
+  createdBefore?: string;
 }
 
 export const notesApi = {
@@ -40,6 +44,8 @@ export const notesApi = {
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.sort) qs.set('sort', params.sort);
     if (params.tag) qs.set('tag', params.tag);
+    if (params.createdAfter) qs.set('createdAfter', params.createdAfter);
+    if (params.createdBefore) qs.set('createdBefore', params.createdBefore);
     const query = qs.toString();
     return query ? `${API_BASE}/notes?${query}` : `${API_BASE}/notes`;
   },

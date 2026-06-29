@@ -2,6 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import { CreateNoteUseCase } from '@/application/use-cases/CreateNoteUseCase';
 import { ListNotesUseCase } from '@/application/use-cases/ListNotesUseCase';
+import { Note } from '@/domain/entities/Note';
 import { InMemoryNoteRepository } from '@/infrastructure/persistence/InMemoryNoteRepository';
 
 describe('ListNotesUseCase', () => {
@@ -71,5 +72,61 @@ describe('ListNotesUseCase', () => {
 
     expect(result.pagination.total).toBe(2);
     expect(result.notes.map((n) => n.title)).toEqual(['work-1', 'work-2']);
+  });
+
+  describe('created-at range filter', () => {
+    /** Save a note with an explicit createdAt so range bounds are testable. */
+    async function seedAt(title: string, createdAt: string, tags: string[] = []) {
+      const at = new Date(createdAt);
+      await repository.save(
+        Note.reconstitute(`id-${title}`, title, 'body', tags, at, at, null, null)
+      );
+    }
+
+    beforeEach(async () => {
+      await seedAt('jan', '2026-01-15T00:00:00Z');
+      await seedAt('mar', '2026-03-15T00:00:00Z');
+      await seedAt('may', '2026-05-15T00:00:00Z');
+    });
+
+    it('filters with an inclusive createdAfter bound', async () => {
+      const result = await listNotes.execute({
+        createdAfter: new Date('2026-03-15T00:00:00Z'),
+        sort: 'createdAt',
+      });
+
+      expect(result.notes.map((n) => n.title)).toEqual(['mar', 'may']);
+      expect(result.pagination.total).toBe(2);
+    });
+
+    it('filters with an inclusive createdBefore bound', async () => {
+      const result = await listNotes.execute({
+        createdBefore: new Date('2026-03-15T00:00:00Z'),
+        sort: 'createdAt',
+      });
+
+      expect(result.notes.map((n) => n.title)).toEqual(['jan', 'mar']);
+    });
+
+    it('combines both bounds into a closed range', async () => {
+      const result = await listNotes.execute({
+        createdAfter: new Date('2026-02-01T00:00:00Z'),
+        createdBefore: new Date('2026-04-01T00:00:00Z'),
+      });
+
+      expect(result.notes.map((n) => n.title)).toEqual(['mar']);
+    });
+
+    it('combines the range with a tag filter (AND)', async () => {
+      await seedAt('tagged-feb', '2026-02-10T00:00:00Z', ['work']);
+
+      const result = await listNotes.execute({
+        tag: 'work',
+        createdAfter: new Date('2026-01-01T00:00:00Z'),
+        createdBefore: new Date('2026-04-01T00:00:00Z'),
+      });
+
+      expect(result.notes.map((n) => n.title)).toEqual(['tagged-feb']);
+    });
   });
 });

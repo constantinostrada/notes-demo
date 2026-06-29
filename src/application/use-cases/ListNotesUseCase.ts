@@ -36,6 +36,8 @@ export class ListNotesUseCase {
     const { notes, total } = await this.noteRepository.list({
       tag: normalizedTag || undefined,
       includeArchived: input.includeArchived ?? false,
+      createdAfter: input.createdAfter,
+      createdBefore: input.createdBefore,
       page,
       limit,
       sortField,

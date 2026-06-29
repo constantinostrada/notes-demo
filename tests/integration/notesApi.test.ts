@@ -197,6 +197,36 @@ describe('GET /api/v1/notes (list)', () => {
     const { error } = await res.json();
     expect(error.code).toBe('VALIDATION_ERROR');
   });
+
+  it('rejects a malformed createdAfter with 400 VALIDATION_ERROR', async () => {
+    const res = await listNotes(new NextRequest(`${BASE}?createdAfter=not-a-date`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('accepts ISO created-at bounds and combines them with a tag filter', async () => {
+    await postNote({ title: 'Alpha', content: 'a', tags: ['work'] });
+    await postNote({ title: 'Beta', content: 'b', tags: ['home'] });
+
+    // A range spanning "now" keeps freshly-created notes; the tag narrows further.
+    const res = await listNotes(
+      new NextRequest(
+        `${BASE}?tag=work&createdAfter=2020-01-01&createdBefore=2999-01-01`
+      )
+    );
+    expect(res.status).toBe(200);
+
+    const { data } = await res.json();
+    expect(data.pagination.total).toBe(1);
+    expect(data.notes[0].title).toBe('Alpha');
+
+    // A past-only upper bound excludes the just-created notes (stable, no rows).
+    const empty = await listNotes(new NextRequest(`${BASE}?createdBefore=2020-01-01`));
+    const emptyJson = await empty.json();
+    expect(emptyJson.data.pagination.total).toBe(0);
+  });
 });
 
 describe('DELETE /api/v1/notes/:id (soft delete / archive)', () => {

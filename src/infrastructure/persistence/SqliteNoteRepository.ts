@@ -219,24 +219,35 @@ export class SqliteNoteRepository implements INoteRepository {
   }
 
   async list(criteria: NoteListCriteria): Promise<NotePage> {
-    const { tag, includeArchived, page, limit, sortField, sortDirection } = criteria;
+    const { tag, includeArchived, createdAfter, createdBefore, page, limit, sortField, sortDirection } =
+      criteria;
     const offset = (page - 1) * limit;
     const orderExpr = ORDER_EXPR[sortField];
     const direction = sortDirection === 'desc' ? 'DESC' : 'ASC';
 
     // An optional tag filter joins the tag table; the (already-normalized) tag
     // is matched exactly against the stored canonical form. Archived notes are
-    // excluded (deleted_at IS NULL) unless the caller opts in.
+    // excluded (deleted_at IS NULL) unless the caller opts in. Optional
+    // created-at bounds (inclusive) narrow the range; all filters compose via AND.
     const joinClause = tag ? 'JOIN note_tags t ON t.note_id = n.id' : '';
     const conditions: string[] = [];
+    const filterParams: Record<string, string | number> = {};
     if (tag) {
       conditions.push('t.tag = @tag');
+      filterParams.tag = tag;
     }
     if (!includeArchived) {
       conditions.push('n.deleted_at IS NULL');
     }
+    if (createdAfter) {
+      conditions.push('n.created_at >= @createdAfter');
+      filterParams.createdAfter = createdAfter.getTime();
+    }
+    if (createdBefore) {
+      conditions.push('n.created_at <= @createdBefore');
+      filterParams.createdBefore = createdBefore.getTime();
+    }
     const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-    const filterParams: Record<string, string> = tag ? { tag } : {};
 
     const { total } = this.db
       .prepare(`SELECT COUNT(*) AS total FROM notes n ${joinClause} ${whereClause}`)
