@@ -51,6 +51,7 @@ interface NoteRow {
   deleted_at: number | null; // epoch milliseconds; null when active (not archived)
   color: string | null; // `#RRGGBB` hex string; null when no colour set
   is_pinned: number; // 0/1 boolean flag; 1 when the note is pinned
+  due_at: number | null; // epoch milliseconds; null when no reminder set
 }
 
 /** Default location of the SQLite database file: `<project>/data/notes.db`. */
@@ -101,7 +102,8 @@ export class SqliteNoteRepository implements INoteRepository {
         updated_at INTEGER NOT NULL,
         deleted_at INTEGER,
         color      TEXT,
-        is_pinned  INTEGER NOT NULL DEFAULT 0
+        is_pinned  INTEGER NOT NULL DEFAULT 0,
+        due_at     INTEGER
       );
       CREATE INDEX IF NOT EXISTS idx_notes_created_at ON notes (created_at DESC);
 
@@ -125,6 +127,7 @@ export class SqliteNoteRepository implements INoteRepository {
     this.ensureColumn('color', 'TEXT');
     // NOT NULL is allowed on ALTER because a DEFAULT backfills existing rows.
     this.ensureColumn('is_pinned', 'INTEGER NOT NULL DEFAULT 0');
+    this.ensureColumn('due_at', 'INTEGER');
   }
 
   /** Add a nullable `column` of the given SQL `type` to `notes` if it's missing. */
@@ -159,15 +162,16 @@ export class SqliteNoteRepository implements INoteRepository {
     this.transaction(() => {
       this.db
         .prepare(
-          `INSERT INTO notes (id, title, content, created_at, updated_at, deleted_at, color, is_pinned)
-           VALUES (@id, @title, @content, @createdAt, @updatedAt, @deletedAt, @color, @isPinned)
+          `INSERT INTO notes (id, title, content, created_at, updated_at, deleted_at, color, is_pinned, due_at)
+           VALUES (@id, @title, @content, @createdAt, @updatedAt, @deletedAt, @color, @isPinned, @dueAt)
            ON CONFLICT(id) DO UPDATE SET
              title      = excluded.title,
              content    = excluded.content,
              updated_at = excluded.updated_at,
              deleted_at = excluded.deleted_at,
              color      = excluded.color,
-             is_pinned  = excluded.is_pinned`
+             is_pinned  = excluded.is_pinned,
+             due_at     = excluded.due_at`
         )
         .run({
           id: note.id,
@@ -178,6 +182,7 @@ export class SqliteNoteRepository implements INoteRepository {
           deletedAt: note.deletedAt ? note.deletedAt.getTime() : null,
           color: note.color,
           isPinned: note.isPinned ? 1 : 0,
+          dueAt: note.dueAt ? note.dueAt.getTime() : null,
         });
 
       // Replace-all keeps the tag set in sync on both create and update.
@@ -299,6 +304,24 @@ export class SqliteNoteRepository implements INoteRepository {
     return { notes, nextCursor };
   }
 
+  async findDue(now: Date): Promise<Note[]> {
+    // Overdue notes: a reminder strictly in the past relative to `now` (epoch
+    // ms, inherently UTC). Archived notes are never overdue, so deleted_at IS
+    // NULL is applied first — mirroring Note.isOverdue's archived-wins rule.
+    // Ordered most-overdue first, with id ASC as a stable tiebreaker.
+    const rows = this.db
+      .prepare(
+        `SELECT * FROM notes
+         WHERE deleted_at IS NULL
+         AND due_at IS NOT NULL
+         AND due_at < @now
+         ORDER BY due_at ASC, id ASC`
+      )
+      .all({ now: now.getTime() }) as unknown as NoteRow[];
+
+    return rows.map((row) => this.toEntity(row));
+  }
+
   async list(criteria: NoteListCriteria): Promise<NotePage> {
     const { page, limit, sortField, sortDirection } = criteria;
     const offset = (page - 1) * limit;
@@ -353,7 +376,8 @@ export class SqliteNoteRepository implements INoteRepository {
       new Date(row.updated_at),
       row.deleted_at !== null ? new Date(row.deleted_at) : null,
       row.color,
-      row.is_pinned === 1
+      row.is_pinned === 1,
+      row.due_at !== null ? new Date(row.due_at) : null
     );
   }
 }

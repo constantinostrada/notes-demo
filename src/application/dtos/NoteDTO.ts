@@ -38,6 +38,8 @@ export interface NoteOutputDTO {
   color: string | null;
   /** Whether the note is pinned. */
   isPinned: boolean;
+  /** ISO reminder timestamp, or null when no reminder is set. */
+  dueAt: string | null;
 }
 
 export interface DeleteNoteInputDTO {
@@ -89,6 +91,20 @@ export interface ListPinnedNotesOutputDTO {
 /** Input for pinning/unpinning a single note. */
 export interface SetPinInputDTO {
   id: string;
+}
+
+/**
+ * Input for setting/clearing a note's reminder. `dueAt` is the reminder time
+ * (a `Date`), or `null` to clear the reminder.
+ */
+export interface SetReminderInputDTO {
+  id: string;
+  dueAt: Date | null;
+}
+
+/** A listing of overdue notes (those past their reminder time). */
+export interface DueNotesOutputDTO {
+  notes: NoteOutputDTO[];
 }
 
 /**
@@ -168,6 +184,7 @@ export interface ImportNoteInputDTO {
   deletedAt?: string | null;
   color?: string | null;
   isPinned?: boolean;
+  dueAt?: string | null;
 }
 
 export interface ImportNotesInputDTO {

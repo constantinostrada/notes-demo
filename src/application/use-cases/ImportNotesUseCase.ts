@@ -74,6 +74,7 @@ export class ImportNotesUseCase {
     const createdAt = raw.createdAt ? new Date(raw.createdAt) : now;
     const updatedAt = raw.updatedAt ? new Date(raw.updatedAt) : now;
     const deletedAt = raw.deletedAt ? new Date(raw.deletedAt) : null;
+    const dueAt = raw.dueAt ? new Date(raw.dueAt) : null;
 
     return Note.reconstitute(
       id,
@@ -84,7 +85,8 @@ export class ImportNotesUseCase {
       updatedAt,
       deletedAt,
       raw.color ?? null,
-      raw.isPinned ?? false
+      raw.isPinned ?? false,
+      dueAt
     );
   }
 }

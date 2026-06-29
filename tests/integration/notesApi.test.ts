@@ -13,6 +13,8 @@ import { GET as countNotes } from '@/app/api/v1/notes/count/route';
 import { GET as listPinnedNotes } from '@/app/api/v1/notes/pinned/route';
 import { POST as pinNoteById } from '@/app/api/v1/notes/[id]/pin/route';
 import { POST as unpinNoteById } from '@/app/api/v1/notes/[id]/unpin/route';
+import { PUT as setReminderById } from '@/app/api/v1/notes/[id]/reminder/route';
+import { GET as listDueNotes } from '@/app/api/v1/notes/due/route';
 
 /**
  * Integration tests for the Notes HTTP API.
@@ -505,5 +507,67 @@ describe('Notes pinning (POST /:id/pin, /:id/unpin + GET /notes/pinned)', () => 
     expect(res.status).toBe(400);
     const { error } = await res.json();
     expect(error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('Notes reminders (PUT /:id/reminder + GET /notes/due)', () => {
+  const DUE = `${BASE}/due`;
+  // A reminder comfortably in the past (overdue) and one in the future.
+  const PAST = '2000-01-01T00:00:00.000Z';
+  const FUTURE = '2999-01-01T00:00:00.000Z';
+
+  /** PUT /:id/reminder with the given body, returning status + parsed body. */
+  async function setReminder(id: string, body: unknown) {
+    const res = await setReminderById(jsonRequest(`${BASE}/${id}/reminder`, 'PUT', body), {
+      params: { id },
+    });
+    return { status: res.status, json: await res.json().catch(() => null) };
+  }
+
+  it('sets and clears a reminder, toggling dueAt', async () => {
+    const created = await postNote({ title: 'Remind me', content: 'x' });
+    expect(created.dueAt).toBeNull();
+
+    const set = await setReminder(created.id, { dueAt: PAST });
+    expect(set.status).toBe(200);
+    expect(set.json.data.dueAt).toBe(PAST);
+
+    const cleared = await setReminder(created.id, { dueAt: null });
+    expect(cleared.status).toBe(200);
+    expect(cleared.json.data.dueAt).toBeNull();
+  });
+
+  it('lists overdue notes and excludes future + archived ones', async () => {
+    const overdue = await postNote({ title: 'Overdue', content: 'a' });
+    const upcoming = await postNote({ title: 'Upcoming', content: 'b' });
+    const archived = await postNote({ title: 'Archived overdue', content: 'c' });
+
+    await setReminder(overdue.id, { dueAt: PAST });
+    await setReminder(upcoming.id, { dueAt: FUTURE });
+    await setReminder(archived.id, { dueAt: PAST });
+
+    // Archive the third note after giving it a past reminder.
+    const del = await deleteNoteById(new NextRequest(`${BASE}/${archived.id}`), {
+      params: { id: archived.id },
+    });
+    expect(del.status).toBe(204);
+
+    const res = await listDueNotes(new NextRequest(DUE));
+    expect(res.status).toBe(200);
+    const { data } = await res.json();
+    expect(data.notes.map((n: { id: string }) => n.id)).toEqual([overdue.id]);
+  });
+
+  it('returns 404 NOTE_NOT_FOUND when setting a reminder on an unknown id', async () => {
+    const { status, json } = await setReminder('does-not-exist', { dueAt: PAST });
+    expect(status).toBe(404);
+    expect(json.error.code).toBe('NOTE_NOT_FOUND');
+  });
+
+  it('returns 400 VALIDATION_ERROR for a malformed dueAt', async () => {
+    const created = await postNote({ title: 'Bad reminder', content: 'x' });
+    const { status, json } = await setReminder(created.id, { dueAt: 'not-a-date' });
+    expect(status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
   });
 });

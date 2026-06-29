@@ -36,6 +36,7 @@ export class InMemoryNoteRepository implements INoteRepository {
       deletedAt: note.deletedAt,
       color: note.color,
       isPinned: note.isPinned,
+      dueAt: note.dueAt,
     };
 
     // Reconstitute to create a fresh instance
@@ -48,7 +49,8 @@ export class InMemoryNoteRepository implements INoteRepository {
       serialized.updatedAt,
       serialized.deletedAt,
       serialized.color,
-      serialized.isPinned
+      serialized.isPinned,
+      serialized.dueAt
     );
 
     this.notes.set(note.id, persistedNote);
@@ -129,6 +131,15 @@ export class InMemoryNoteRepository implements INoteRepository {
     return { notes: page, nextCursor };
   }
 
+  async findDue(now: Date): Promise<Note[]> {
+    // Overdue notes only: a reminder strictly in the past relative to `now`.
+    // The archived-never-overdue invariant lives in Note.isOverdue, which
+    // excludes archived notes first — mirroring the SQLite repo's WHERE clause.
+    return Array.from(this.notes.values())
+      .filter((note) => note.isOverdue(now))
+      .sort(compareDue);
+  }
+
   async list(criteria: NoteListCriteria): Promise<NotePage> {
     const { page, limit, sortField, sortDirection } = criteria;
 
@@ -189,6 +200,20 @@ function compareSearch(a: Note, b: Note): number {
   if (byCreated !== 0) return byCreated;
   // Binary (code-unit) comparison so the sort agrees exactly with the keyset
   // predicate (`isAfterCursor`) and with SQLite's binary `id ASC`.
+  if (a.id < b.id) return -1;
+  if (a.id > b.id) return 1;
+  return 0;
+}
+
+/**
+ * Due ordering: most-overdue first (dueAt ascending), with `id` ascending as a
+ * stable tiebreaker so equal due times order deterministically (mirrors the
+ * SQLite repository's `ORDER BY n.due_at ASC, n.id ASC`). Only overdue notes
+ * reach this comparator, so `dueAt` is always set.
+ */
+function compareDue(a: Note, b: Note): number {
+  const byDue = (a.dueAt?.getTime() ?? 0) - (b.dueAt?.getTime() ?? 0);
+  if (byDue !== 0) return byDue;
   if (a.id < b.id) return -1;
   if (a.id > b.id) return 1;
   return 0;

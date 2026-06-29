@@ -84,6 +84,22 @@ export const updateNoteSchema = z
   );
 
 /**
+ * Body for PUT /api/v1/notes/:id/reminder. `dueAt` sets the reminder when given
+ * an ISO 8601 date or datetime (parsed to a `Date`), or clears it when `null`.
+ * The key is required (present but nullable): a malformed or missing value
+ * yields a 400 VALIDATION_ERROR via the central `mapError`. Bare dates are read
+ * as UTC midnight, matching how timestamps are stored/compared (server UTC).
+ */
+export const reminderSchema = z.object({
+  dueAt: z
+    .union([z.iso.datetime(), z.iso.date()], {
+      message: 'dueAt must be an ISO 8601 date or datetime, or null',
+    })
+    .transform((value) => new Date(value))
+    .nullable(),
+});
+
+/**
  * Query params for GET /api/v1/notes — all optional, each with a sensible
  * default. Values arrive as strings from the URL, so `page`/`limit` are coerced
  * to integers and bounded; `sort` is constrained to the known tokens.
@@ -215,4 +231,5 @@ export type SearchNotesQuery = z.infer<typeof searchNotesSchema>;
 export type ListNotesQuery = z.infer<typeof listNotesSchema>;
 export type PinnedNotesQuery = z.infer<typeof pinnedNotesSchema>;
 export type CountNotesQuery = z.infer<typeof countNotesSchema>;
+export type ReminderPayload = z.infer<typeof reminderSchema>;
 export type ImportNotesPayload = z.infer<typeof importNotesSchema>;

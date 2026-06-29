@@ -29,7 +29,10 @@ export class Note {
     /** Optional `#RRGGBB` colour tag; null means no colour set. */
     private _color: string | null,
     /** Whether the note is pinned (surfaced in the pinned listing). */
-    private _isPinned: boolean
+    private _isPinned: boolean,
+    /** Optional reminder time; null means no reminder set. When in the past
+     *  (server clock, UTC) the note is overdue — see `isOverdue`. */
+    private _dueAt: Date | null
   ) {
     this.validateTitle(this._title);
     this._tags = Note.normalizeTags(tags);
@@ -48,7 +51,7 @@ export class Note {
     color: string | null = null
   ): Note {
     const now = new Date();
-    return new Note(id, title, content, tags, now, now, null, color, false);
+    return new Note(id, title, content, tags, now, now, null, color, false, null);
   }
 
   /**
@@ -63,7 +66,8 @@ export class Note {
     updatedAt: Date,
     deletedAt: Date | null = null,
     color: string | null = null,
-    isPinned: boolean = false
+    isPinned: boolean = false,
+    dueAt: Date | null = null
   ): Note {
     return new Note(
       id,
@@ -74,7 +78,8 @@ export class Note {
       updatedAt,
       deletedAt,
       color,
-      isPinned
+      isPinned,
+      dueAt
     );
   }
 
@@ -229,6 +234,29 @@ export class Note {
   }
 
   /**
+   * Set or clear the note's reminder (due date). Pass a `Date` to schedule the
+   * reminder, or `null` to clear it. Stamps `updatedAt` so the change surfaces
+   * in listings/sorting.
+   */
+  setReminder(dueAt: Date | null): void {
+    this._dueAt = dueAt;
+    this._updatedAt = new Date();
+  }
+
+  /**
+   * Business rule: a note is overdue when it carries a reminder whose time is
+   * strictly in the past relative to `now` (the server clock, in UTC). An
+   * archived note is NEVER overdue — the archive state wins, so archived notes
+   * are excluded before the due comparison is even considered.
+   */
+  isOverdue(now: Date): boolean {
+    if (this.isArchived()) {
+      return false;
+    }
+    return this._dueAt !== null && this._dueAt.getTime() < now.getTime();
+  }
+
+  /**
    * Check if the note is empty (no content)
    */
   isEmpty(): boolean {
@@ -284,5 +312,10 @@ export class Note {
   /** Whether the note is pinned. */
   get isPinned(): boolean {
     return this._isPinned;
+  }
+
+  /** Reminder time, or null when the note has no reminder set. */
+  get dueAt(): Date | null {
+    return this._dueAt;
   }
 }

@@ -23,6 +23,7 @@ import {
   countNotesSchema,
   importNotesSchema,
   pinnedNotesSchema,
+  reminderSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
@@ -156,6 +157,30 @@ export class NoteController {
 
       const useCase = container.getListPinnedNotesUseCase();
       const result = await useCase.execute({ cursor, limit });
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async setReminder(id: string, body: unknown): Promise<ControllerResult> {
+    try {
+      const { dueAt } = reminderSchema.parse(body);
+
+      const useCase = container.getSetReminderUseCase();
+      const result = await useCase.execute({ id, dueAt });
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async listDueNotes(): Promise<ControllerResult> {
+    try {
+      const useCase = container.getListDueNotesUseCase();
+      const result = await useCase.execute();
 
       return ok(result);
     } catch (error) {

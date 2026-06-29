@@ -142,6 +142,14 @@ export interface INoteRepository {
   listPinned(criteria: NotePinnedCriteria): Promise<NoteSearchPage>;
 
   /**
+   * List overdue notes — those carrying a reminder (`dueAt`) strictly in the
+   * past relative to `now` (the server clock, in UTC). Archived (soft-deleted)
+   * notes are never overdue and so are always excluded. Results are ordered by
+   * `dueAt` ascending (most overdue first) with `id` as a stable tiebreaker.
+   */
+  findDue(now: Date): Promise<Note[]>;
+
+  /**
    * List notes with pagination, sorting and an optional tag filter.
    * Returns the requested page together with the total number of matches
    * (so callers can compute pagination metadata).

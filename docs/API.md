@@ -29,6 +29,8 @@ These conventions are intentional and apply to every endpoint.
 | Get note      | `GET /api/v1/notes/:id`         | `GetNoteUseCase`     |
 | Update note   | `PUT /api/v1/notes/:id`         | `UpdateNoteUseCase`  |
 | Delete note   | `DELETE /api/v1/notes/:id`      | `DeleteNoteUseCase`  |
+| Set reminder  | `PUT /api/v1/notes/:id/reminder`| `SetReminderUseCase` |
+| Due notes     | `GET /api/v1/notes/due`         | `ListDueNotesUseCase`|
 
 The route convention lives in code in `src/interfaces/http/apiRoutes.ts` and is
 reused by the frontend so client and server never drift.

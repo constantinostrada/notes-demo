@@ -8,10 +8,12 @@
  *   - Notes collection:   /api/v1/notes  (list supports ?page=&limit=&sort=&tag=&createdAfter=&createdBefore=)
  *   - Notes search:       /api/v1/notes/search?q= (cursor-paginated via &cursor=&limit=)
  *   - Notes pinned:       /api/v1/notes/pinned (cursor-paginated via &cursor=&limit=)
+ *   - Notes due:          /api/v1/notes/due (overdue notes; reminder in the past)
  *   - Notes export:       /api/v1/notes/export
  *   - Notes import:       /api/v1/notes/import
  *   - Single note:        /api/v1/notes/:id
  *   - Pin / unpin note:   /api/v1/notes/:id/pin, /api/v1/notes/:id/unpin (POST)
+ *   - Set/clear reminder: /api/v1/notes/:id/reminder (PUT)
  *
  * The Next.js App Router derives server paths from the folder structure
  * (`src/app/api/v1/notes/...`), so this module is the client-facing mirror
@@ -82,6 +84,8 @@ export const notesApi = {
     const query = qs.toString();
     return query ? `${API_BASE}/notes/pinned?${query}` : `${API_BASE}/notes/pinned`;
   },
+  /** Due endpoint: list overdue notes — reminder in the past, archived excluded (GET). */
+  due: () => `${API_BASE}/notes/due`,
   /** Export endpoint: download every note as a JSON snapshot (GET). */
   export: () => `${API_BASE}/notes/export`,
   /** Import endpoint: load an array of notes from a JSON payload (POST). */
@@ -92,4 +96,6 @@ export const notesApi = {
   pin: (id: string) => `${API_BASE}/notes/${id}/pin`,
   /** Unpin a note (POST). */
   unpin: (id: string) => `${API_BASE}/notes/${id}/unpin`,
+  /** Set or clear a note's reminder (PUT; body `{ dueAt: <ISO> | null }`). */
+  reminder: (id: string) => `${API_BASE}/notes/${id}/reminder`,
 };

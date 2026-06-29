@@ -19,6 +19,8 @@ import { ImportNotesUseCase } from '@/application/use-cases/ImportNotesUseCase';
 import { PinNoteUseCase } from '@/application/use-cases/PinNoteUseCase';
 import { UnpinNoteUseCase } from '@/application/use-cases/UnpinNoteUseCase';
 import { ListPinnedNotesUseCase } from '@/application/use-cases/ListPinnedNotesUseCase';
+import { SetReminderUseCase } from '@/application/use-cases/SetReminderUseCase';
+import { ListDueNotesUseCase } from '@/application/use-cases/ListDueNotesUseCase';
 
 /**
  * The repository is cached on `globalThis`.
@@ -127,6 +129,14 @@ class DIContainer {
 
   getListPinnedNotesUseCase(): ListPinnedNotesUseCase {
     return new ListPinnedNotesUseCase(this.getNoteRepository());
+  }
+
+  getSetReminderUseCase(): SetReminderUseCase {
+    return new SetReminderUseCase(this.getNoteRepository());
+  }
+
+  getListDueNotesUseCase(): ListDueNotesUseCase {
+    return new ListDueNotesUseCase(this.getNoteRepository());
   }
 }
 
