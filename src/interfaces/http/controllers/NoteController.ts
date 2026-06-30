@@ -24,6 +24,7 @@ import {
   importNotesSchema,
   pinnedNotesSchema,
   reminderSchema,
+  bulkArchiveSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
@@ -111,6 +112,19 @@ export class NoteController {
       await useCase.execute({ id });
 
       return noContent();
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async bulkArchiveNotes(body: unknown): Promise<ControllerResult> {
+    try {
+      const input = bulkArchiveSchema.parse(body);
+
+      const useCase = container.getBulkArchiveNotesUseCase();
+      const result = await useCase.execute(input);
+
+      return ok(result);
     } catch (error) {
       return mapError(error);
     }

@@ -203,6 +203,24 @@ export interface ImportNotesOutputDTO {
   notes: NoteOutputDTO[];
 }
 
+/** Input for archiving several notes at once by id. */
+export interface BulkArchiveNotesInputDTO {
+  ids: string[];
+}
+
+/**
+ * Outcome of a bulk archive. `archived` notes were newly soft-deleted; the
+ * remaining ids (`skipped` = unknown, already-archived, or repeated within the
+ * payload) were ignored without error. `total` is the number of ids received.
+ * Archived notes keep their row (soft-delete), so they stay recoverable.
+ */
+export interface BulkArchiveNotesOutputDTO {
+  archived: number;
+  skipped: number;
+  total: number;
+  notes: NoteOutputDTO[];
+}
+
 /**
  * Full snapshot of every note (archived included), shaped so it can be re-imported.
  */

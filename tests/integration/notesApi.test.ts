@@ -16,6 +16,7 @@ import { POST as unpinNoteById } from '@/app/api/v1/notes/[id]/unpin/route';
 import { PUT as setReminderById } from '@/app/api/v1/notes/[id]/reminder/route';
 import { GET as listDueNotes } from '@/app/api/v1/notes/due/route';
 import { GET as countDueNotes } from '@/app/api/v1/notes/due/count/route';
+import { POST as bulkArchiveNotes } from '@/app/api/v1/notes/bulk-archive/route';
 
 /**
  * Integration tests for the Notes HTTP API.
@@ -604,6 +605,65 @@ describe('Notes reminders (PUT /:id/reminder + GET /notes/due)', () => {
   it('returns 400 VALIDATION_ERROR for a malformed dueAt', async () => {
     const created = await postNote({ title: 'Bad reminder', content: 'x' });
     const { status, json } = await setReminder(created.id, { dueAt: 'not-a-date' });
+    expect(status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('POST /api/v1/notes/bulk-archive', () => {
+  /** POST a bulk-archive request and return { status, json }. */
+  async function bulkArchive(body: unknown) {
+    const res = await bulkArchiveNotes(
+      jsonRequest(`${BASE}/bulk-archive`, 'POST', body)
+    );
+    return { status: res.status, json: await res.json() };
+  }
+
+  it('archives every listed note: hidden from list and search, still recoverable', async () => {
+    const a = await postNote({ title: 'Alpha', content: 'find me' });
+    const b = await postNote({ title: 'Beta', content: 'find me' });
+    const keep = await postNote({ title: 'Gamma', content: 'find me' });
+
+    const { status, json } = await bulkArchive({ ids: [a.id, b.id] });
+    expect(status).toBe(200);
+    expect(json.data).toMatchObject({ archived: 2, skipped: 0, total: 2 });
+
+    // Both are gone from the default listing and from search...
+    const listed = await listNotes(new NextRequest(BASE));
+    const listedJson = await listed.json();
+    expect(listedJson.data.notes.map((n: { id: string }) => n.id)).toEqual([keep.id]);
+
+    const found = await searchNotes(new NextRequest(`${BASE}/search?q=find%20me`));
+    const foundJson = await found.json();
+    expect(foundJson.data.notes.map((n: { id: string }) => n.id)).toEqual([keep.id]);
+
+    // ...but recoverable: ?includeArchived=true surfaces them with deletedAt set.
+    const withArchived = await listNotes(
+      new NextRequest(`${BASE}?includeArchived=true`)
+    );
+    const withArchivedJson = await withArchived.json();
+    expect(withArchivedJson.data.pagination.total).toBe(3);
+    const archivedRow = withArchivedJson.data.notes.find(
+      (n: { id: string }) => n.id === a.id
+    );
+    expect(archivedRow.deletedAt).toEqual(expect.any(String));
+  });
+
+  it('ignores unknown and already-archived ids without failing the batch', async () => {
+    const a = await postNote({ title: 'Alpha', content: 'x' });
+
+    // First call archives `a`; second sees it as already-archived.
+    await bulkArchive({ ids: [a.id] });
+    const { status, json } = await bulkArchive({
+      ids: [a.id, 'does-not-exist'],
+    });
+
+    expect(status).toBe(200);
+    expect(json.data).toMatchObject({ archived: 0, skipped: 2, total: 2 });
+  });
+
+  it('returns 400 VALIDATION_ERROR for an empty id list', async () => {
+    const { status, json } = await bulkArchive({ ids: [] });
     expect(status).toBe(400);
     expect(json.error.code).toBe('VALIDATION_ERROR');
   });

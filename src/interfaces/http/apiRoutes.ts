@@ -11,6 +11,7 @@
  *   - Notes due:          /api/v1/notes/due (overdue notes; reminder in the past)
  *   - Notes export:       /api/v1/notes/export
  *   - Notes import:       /api/v1/notes/import
+ *   - Notes bulk-archive: /api/v1/notes/bulk-archive (POST; body `{ ids: [...] }`)
  *   - Single note:        /api/v1/notes/:id
  *   - Pin / unpin note:   /api/v1/notes/:id/pin, /api/v1/notes/:id/unpin (POST)
  *   - Set/clear reminder: /api/v1/notes/:id/reminder (PUT)
@@ -90,6 +91,8 @@ export const notesApi = {
   export: () => `${API_BASE}/notes/export`,
   /** Import endpoint: load an array of notes from a JSON payload (POST). */
   import: () => `${API_BASE}/notes/import`,
+  /** Bulk-archive endpoint: soft-delete many notes by id (POST; `{ ids: [...] }`). */
+  bulkArchive: () => `${API_BASE}/notes/bulk-archive`,
   /** Single-resource endpoint: get (GET), update (PUT), delete (DELETE). */
   resource: (id: string) => `${API_BASE}/notes/${id}`,
   /** Pin a note (POST). */

@@ -225,6 +225,24 @@ export const importNotesSchema = z.object({
     .min(1, { message: 'Provide at least one note to import' }),
 });
 
+/**
+ * Body for POST /api/v1/notes/bulk-archive: a non-empty array of note ids to
+ * archive in one request. Shape-only — ids that don't match an active note
+ * (unknown or already archived) are ignored by the use case, not rejected here,
+ * so we only require non-empty strings (no UUID format check).
+ */
+export const bulkArchiveSchema = z.object({
+  ids: z
+    .array(
+      z
+        .string({ message: 'Each id must be a string' })
+        .trim()
+        .min(1, { message: 'id cannot be empty' }),
+      { message: 'ids must be an array of note ids' }
+    )
+    .min(1, { message: 'Provide at least one note id to archive' }),
+});
+
 export type CreateNotePayload = z.infer<typeof createNoteSchema>;
 export type UpdateNotePayload = z.infer<typeof updateNoteSchema>;
 export type SearchNotesQuery = z.infer<typeof searchNotesSchema>;
@@ -233,3 +251,4 @@ export type PinnedNotesQuery = z.infer<typeof pinnedNotesSchema>;
 export type CountNotesQuery = z.infer<typeof countNotesSchema>;
 export type ReminderPayload = z.infer<typeof reminderSchema>;
 export type ImportNotesPayload = z.infer<typeof importNotesSchema>;
+export type BulkArchivePayload = z.infer<typeof bulkArchiveSchema>;
