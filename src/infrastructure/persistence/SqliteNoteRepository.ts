@@ -19,10 +19,11 @@ import { DatabaseSync } from 'node:sqlite';
 import { Note } from '@/domain/entities/Note';
 import {
   INoteRepository,
+  ListCursor,
   NoteCountCriteria,
   NoteFilterCriteria,
   NoteListCriteria,
-  NotePage,
+  NoteListPage,
   NotePinnedCriteria,
   NoteSearchCriteria,
   NoteSearchPage,
@@ -48,7 +49,6 @@ const DUE_WHERE =
 
 const ORDER_EXPR: Record<NoteSortField, string> = {
   createdAt: 'n.created_at',
-  updatedAt: 'n.updated_at',
   title: 'n.title COLLATE NOCASE',
 };
 
@@ -340,33 +340,64 @@ export class SqliteNoteRepository implements INoteRepository {
     return total;
   }
 
-  async list(criteria: NoteListCriteria): Promise<NotePage> {
-    const { page, limit, sortField, sortDirection } = criteria;
-    const offset = (page - 1) * limit;
+  async list(criteria: NoteListCriteria): Promise<NoteListPage> {
+    const { limit, sortField, sortDirection, cursor } = criteria;
     const orderExpr = ORDER_EXPR[sortField];
     const direction = sortDirection === 'desc' ? 'DESC' : 'ASC';
 
-    const { joinClause, whereClause, filterParams } = buildFilterSql(criteria);
+    const { joinClause, conditions, filterParams } = buildFilterSql(criteria);
+    const params: Record<string, string | number> = { ...filterParams };
 
-    const { total } = this.db
-      .prepare(`SELECT COUNT(*) AS total FROM notes n ${joinClause} ${whereClause}`)
-      .get(filterParams) as { total: number };
+    // Keyset cursor: only rows strictly after the cursor in the requested
+    // ordering — a later note in the directed primary order, or an equal sort
+    // key with a higher id. This keeps paging stable with no skipped/duplicated
+    // rows, even when many notes share the same sort key. The comparison
+    // operator follows the direction; `n.id ASC` stays the tiebreaker either way.
+    if (cursor) {
+      const cmp = sortDirection === 'desc' ? '<' : '>';
+      conditions.push(
+        `(${orderExpr} ${cmp} @cursorValue OR (${orderExpr} = @cursorValue AND n.id > @cursorId))`
+      );
+      // createdAt sorts on an integer epoch; title sorts on the raw string.
+      params.cursorValue =
+        sortField === 'createdAt' ? Number(cursor.value) : String(cursor.value);
+      params.cursorId = cursor.id;
+    }
 
-    // `orderExpr`/`direction` come from a fixed whitelist (never raw input);
-    // `n.id` is a stable tiebreaker so equal keys page deterministically.
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+
+    // Over-fetch one row to learn whether a further page exists without a
+    // separate COUNT. `orderExpr`/`direction` come from a fixed whitelist (never
+    // raw input), so the dynamic ORDER BY stays injection-safe.
     const rows = this.db
       .prepare(
         `SELECT n.* FROM notes n ${joinClause} ${whereClause}
          ORDER BY ${orderExpr} ${direction}, n.id ASC
-         LIMIT @limit OFFSET @offset`
+         LIMIT @limitPlusOne`
       )
-      .all({ ...filterParams, limit, offset }) as unknown as NoteRow[];
+      .all({ ...params, limitPlusOne: limit + 1 }) as unknown as NoteRow[];
 
-    return { notes: rows.map((row) => this.toEntity(row)), total };
+    const hasMore = rows.length > limit;
+    const pageRows = hasMore ? rows.slice(0, limit) : rows;
+    const notes = pageRows.map((row) => this.toEntity(row));
+
+    const lastRow = pageRows[pageRows.length - 1];
+    const nextCursor: ListCursor | null =
+      hasMore && lastRow
+        ? {
+            sortField,
+            direction: sortDirection,
+            value: sortField === 'createdAt' ? lastRow.created_at : lastRow.title,
+            id: lastRow.id,
+          }
+        : null;
+
+    return { notes, nextCursor };
   }
 
   async count(criteria: NoteCountCriteria): Promise<number> {
-    const { joinClause, whereClause, filterParams } = buildFilterSql(criteria);
+    const { joinClause, conditions, filterParams } = buildFilterSql(criteria);
+    const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
 
     const { total } = this.db
       .prepare(`SELECT COUNT(*) AS total FROM notes n ${joinClause} ${whereClause}`)
@@ -401,15 +432,18 @@ export class SqliteNoteRepository implements INoteRepository {
 }
 
 /**
- * Build the JOIN/WHERE fragments (and bound parameters) shared by `list` and
- * `count`. An optional tag filter joins the tag table; the (already-normalized)
- * tag is matched exactly against the stored canonical form. Archived notes are
- * excluded (deleted_at IS NULL) unless the caller opts in. Optional created-at
- * bounds (inclusive) narrow the range; all filters compose via AND.
+ * Build the JOIN clause, WHERE conditions and bound parameters shared by `list`
+ * and `count`. An optional tag filter joins the tag table; the (already-
+ * normalized) tag is matched exactly against the stored canonical form. Archived
+ * notes are excluded (deleted_at IS NULL) unless the caller opts in. Optional
+ * created-at bounds (inclusive) narrow the range; all filters compose via AND.
+ *
+ * Returns `conditions` as an array (not an assembled WHERE) so `list` can append
+ * its keyset cursor predicate before the clause is built.
  */
 function buildFilterSql(criteria: NoteFilterCriteria): {
   joinClause: string;
-  whereClause: string;
+  conditions: string[];
   filterParams: Record<string, string | number>;
 } {
   const { tag, includeArchived, createdAfter, createdBefore } = criteria;
@@ -431,8 +465,7 @@ function buildFilterSql(criteria: NoteFilterCriteria): {
     conditions.push('n.created_at <= @createdBefore');
     filterParams.createdBefore = createdBefore.getTime();
   }
-  const whereClause = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
-  return { joinClause, whereClause, filterParams };
+  return { joinClause, conditions, filterParams };
 }
 
 /** Escape LIKE special characters (`\`, `%`, `_`) for use with ESCAPE '\'. */

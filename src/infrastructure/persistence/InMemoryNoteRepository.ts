@@ -9,10 +9,11 @@
 import { Note } from '@/domain/entities/Note';
 import {
   INoteRepository,
+  ListCursor,
   NoteCountCriteria,
   NoteFilterCriteria,
   NoteListCriteria,
-  NotePage,
+  NoteListPage,
   NotePinnedCriteria,
   NoteSearchCriteria,
   NoteSearchPage,
@@ -147,18 +148,28 @@ export class InMemoryNoteRepository implements INoteRepository {
       .length;
   }
 
-  async list(criteria: NoteListCriteria): Promise<NotePage> {
-    const { page, limit, sortField, sortDirection } = criteria;
+  async list(criteria: NoteListCriteria): Promise<NoteListPage> {
+    const { limit, sortField, sortDirection, cursor } = criteria;
 
+    // Order by the requested field/direction with id as a stable tiebreaker,
+    // matching the SQLite repository's ORDER BY so paging behaves identically.
     const sorted = this.filterNotes(criteria).sort((a, b) =>
       compareNotes(a, b, sortField, sortDirection)
     );
 
-    const offset = (page - 1) * limit;
-    return {
-      notes: sorted.slice(offset, offset + limit),
-      total: sorted.length,
-    };
+    // Keyset: drop everything up to and including the cursor position.
+    const afterCursor = cursor
+      ? sorted.filter((note) => isAfterListCursor(note, cursor))
+      : sorted;
+
+    // Over-fetch one row to learn whether a further page exists.
+    const page = afterCursor.slice(0, limit);
+    const hasMore = afterCursor.length > limit;
+    const last = page[page.length - 1];
+    const nextCursor: ListCursor | null =
+      hasMore && last ? toListCursor(last, sortField, sortDirection) : null;
+
+    return { notes: page, nextCursor };
   }
 
   async count(criteria: NoteCountCriteria): Promise<number> {
@@ -238,9 +249,29 @@ function isAfterCursor(note: Note, cursor: SearchCursor): boolean {
 }
 
 /**
- * Compare two notes by the requested field/direction. Titles compare
- * case-insensitively; `id` is a stable tiebreaker so equal keys order
- * deterministically (mirrors the SQLite repository's ORDER BY).
+ * Compare a note's primary sort key (the chosen field only, no tiebreaker)
+ * against another value, in *ascending* order. Titles compare
+ * case-insensitively; `createdAt` compares by epoch milliseconds. The directed
+ * comparison and the id tiebreaker are layered on top by the callers.
+ */
+function comparePrimary(
+  field: NoteSortField,
+  aValue: string | number,
+  bValue: string | number
+): number {
+  if (field === 'title') {
+    return String(aValue).localeCompare(String(bValue), undefined, {
+      sensitivity: 'base',
+    });
+  }
+  return Number(aValue) - Number(bValue);
+}
+
+/**
+ * Compare two notes by the requested field/direction. The primary key follows
+ * `direction`, but `id` is *always* an ascending binary tiebreaker — matching
+ * SQLite's `ORDER BY <field> <dir>, n.id ASC` and the keyset predicate below, so
+ * equal keys page deterministically across both backends.
  */
 function compareNotes(
   a: Note,
@@ -248,21 +279,38 @@ function compareNotes(
   field: NoteSortField,
   direction: SortDirection
 ): number {
-  let cmp: number;
-  switch (field) {
-    case 'title':
-      cmp = a.title.localeCompare(b.title, undefined, { sensitivity: 'base' });
-      break;
-    case 'updatedAt':
-      cmp = a.updatedAt.getTime() - b.updatedAt.getTime();
-      break;
-    case 'createdAt':
-    default:
-      cmp = a.createdAt.getTime() - b.createdAt.getTime();
-      break;
-  }
+  const primary = comparePrimary(field, sortKey(a, field), sortKey(b, field));
+  let cmp = direction === 'desc' ? -primary : primary;
   if (cmp === 0) {
-    cmp = a.id.localeCompare(b.id);
+    // Binary (code-unit) compare so it agrees with SQLite's binary `id ASC`.
+    if (a.id < b.id) cmp = -1;
+    else if (a.id > b.id) cmp = 1;
   }
-  return direction === 'desc' ? -cmp : cmp;
+  return cmp;
+}
+
+/** A note's sort key for the given field (title string, or createdAt epoch ms). */
+function sortKey(note: Note, field: NoteSortField): string | number {
+  return field === 'title' ? note.title : note.createdAt.getTime();
+}
+
+/**
+ * Whether `note` falls strictly after the cursor position in the listing's
+ * ordering: a later note in the directed primary order, or an equal primary key
+ * with a higher id. Mirrors the SQLite keyset WHERE clause exactly.
+ */
+function isAfterListCursor(note: Note, cursor: ListCursor): boolean {
+  const primary = comparePrimary(cursor.sortField, sortKey(note, cursor.sortField), cursor.value);
+  const directed = cursor.direction === 'desc' ? -primary : primary;
+  if (directed !== 0) return directed > 0;
+  return note.id > cursor.id;
+}
+
+/** Build the keyset cursor for the last note of a page. */
+function toListCursor(
+  note: Note,
+  field: NoteSortField,
+  direction: SortDirection
+): ListCursor {
+  return { sortField: field, direction, value: sortKey(note, field), id: note.id };
 }

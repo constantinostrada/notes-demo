@@ -8,7 +8,7 @@
 import { Note } from '../entities/Note';
 
 /** Fields a note listing can be ordered by. */
-export type NoteSortField = 'createdAt' | 'updatedAt' | 'title';
+export type NoteSortField = 'createdAt' | 'title';
 
 /** Sort direction for a note listing. */
 export type SortDirection = 'asc' | 'desc';
@@ -29,24 +29,50 @@ export interface NoteFilterCriteria {
 }
 
 /**
- * Criteria for a paginated, sorted (and optionally tag-filtered) listing.
- * `page` is 1-based and `limit` is the page size; both are expected to be
- * already-validated positive integers (bounds are enforced at the edge).
+ * Keyset cursor identifying a position in a *sortable* note listing. Holds the
+ * sort key (`value`) and a stable tiebreaker (`id`) of the last returned note,
+ * plus the `sortField`/`direction` the page was produced under, so the next
+ * request resumes strictly *after* it with no skipped/duplicated rows — even
+ * when many notes share the same sort key.
+ *
+ * `value` is the note's sort key: epoch milliseconds when ordering by
+ * `createdAt`, or the raw title string when ordering by `title`. The embedded
+ * `sortField`/`direction` let the edge reject a cursor minted under a different
+ * ordering (mixing them would page incorrectly).
+ *
+ * This is the decoded form; the opaque string handed to/from clients is encoded
+ * in the application layer (see listCursor codec).
+ */
+export interface ListCursor {
+  sortField: NoteSortField;
+  direction: SortDirection;
+  value: number | string;
+  id: string;
+}
+
+/**
+ * Criteria for a cursor-paginated, sorted (and optionally tag-filtered) listing.
+ * `limit` is the page size (already validated/bounded at the edge). When
+ * `cursor` is set, only notes strictly after that position (in the requested
+ * `sortField`/`sortDirection` ordering) are returned.
  */
 export interface NoteListCriteria extends NoteFilterCriteria {
-  page: number;
   limit: number;
   sortField: NoteSortField;
   sortDirection: SortDirection;
+  cursor?: ListCursor;
 }
 
 /** Criteria for counting notes — the listing filters without paging/sorting. */
 export type NoteCountCriteria = NoteFilterCriteria;
 
-/** A single page of notes plus the total number of matches (ignoring paging). */
-export interface NotePage {
+/**
+ * A single cursor-paginated page of a listing. `nextCursor` points at the last
+ * note in this page when more matches remain, or is `null` on the final page.
+ */
+export interface NoteListPage {
   notes: Note[];
-  total: number;
+  nextCursor: ListCursor | null;
 }
 
 /**
@@ -158,11 +184,12 @@ export interface INoteRepository {
   countDue(now: Date): Promise<number>;
 
   /**
-   * List notes with pagination, sorting and an optional tag filter.
-   * Returns the requested page together with the total number of matches
-   * (so callers can compute pagination metadata).
+   * List notes as one cursor-paginated page, ordered by the requested
+   * `sortField`/`sortDirection` with `id` as a stable tiebreaker, optionally
+   * tag/created-at filtered. Like `search`, paging via `nextCursor` never skips
+   * or duplicates a note — even when many notes share the same sort key.
    */
-  list(criteria: NoteListCriteria): Promise<NotePage>;
+  list(criteria: NoteListCriteria): Promise<NoteListPage>;
 
   /**
    * Count notes matching the given filters (same rules as `list`, without

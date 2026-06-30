@@ -5,7 +5,7 @@
  *
  * Convention: versioned, plural, resource-oriented paths under `/api/v{n}`.
  *   - Base prefix:        /api/v1
- *   - Notes collection:   /api/v1/notes  (list supports ?page=&limit=&sort=&tag=&createdAfter=&createdBefore=)
+ *   - Notes collection:   /api/v1/notes  (list: cursor-paginated via ?sort=&dir=&cursor=&limit=, filtered by ?tag=&createdAfter=&createdBefore=)
  *   - Notes search:       /api/v1/notes/search?q= (cursor-paginated via &cursor=&limit=)
  *   - Notes pinned:       /api/v1/notes/pinned (cursor-paginated via &cursor=&limit=)
  *   - Notes due:          /api/v1/notes/due (overdue notes; reminder in the past)
@@ -27,9 +27,13 @@ export const API_BASE = `/api/${API_VERSION}`;
 
 /** Optional query params accepted by the notes list endpoint. */
 export interface ListNotesParams {
-  page?: number;
   limit?: number;
+  /** Field to order by: `createdAt` (default) or `title`. */
   sort?: string;
+  /** Order direction: `asc` or `desc` (default). */
+  dir?: string;
+  /** Opaque `next_cursor` token from a previous page. */
+  cursor?: string;
   tag?: string;
   /** Inclusive lower bound on creation time (ISO 8601 date or datetime). */
   createdAfter?: string;
@@ -49,14 +53,16 @@ export const notesApi = {
   /** Collection endpoint: list (GET) and create (POST). */
   collection: () => `${API_BASE}/notes`,
   /**
-   * List endpoint with optional pagination/sort/tag params. Omitted params fall
-   * back to the server defaults; only the provided ones are appended.
+   * List endpoint with optional sort/cursor-pagination/tag params. Omitted
+   * params fall back to the server defaults; only the provided ones are
+   * appended. The server returns `next_cursor` to fetch the following page.
    */
   list: (params: ListNotesParams = {}) => {
     const qs = new URLSearchParams();
-    if (params.page != null) qs.set('page', String(params.page));
     if (params.limit != null) qs.set('limit', String(params.limit));
     if (params.sort) qs.set('sort', params.sort);
+    if (params.dir) qs.set('dir', params.dir);
+    if (params.cursor) qs.set('cursor', params.cursor);
     if (params.tag) qs.set('tag', params.tag);
     if (params.createdAfter) qs.set('createdAfter', params.createdAfter);
     if (params.createdBefore) qs.set('createdBefore', params.createdBefore);

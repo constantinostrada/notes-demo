@@ -11,16 +11,18 @@
 
 import { z } from 'zod';
 import {
-  NOTE_SORT_OPTIONS,
-  DEFAULT_PAGE,
+  NOTE_SORT_FIELDS,
+  SORT_DIRECTIONS,
   DEFAULT_LIMIT,
   MAX_LIMIT,
-  DEFAULT_SORT,
+  DEFAULT_SORT_FIELD,
+  DEFAULT_SORT_DIRECTION,
 } from '@/application/dtos/NoteDTO';
 import {
   decodeSearchCursor,
   InvalidCursorError,
 } from '@/application/pagination/searchCursor';
+import { decodeListCursor } from '@/application/pagination/listCursor';
 
 /**
  * Tags payload: an optional array of strings. Shape-only — canonicalization
@@ -101,20 +103,20 @@ export const reminderSchema = z.object({
 
 /**
  * Query params for GET /api/v1/notes — all optional, each with a sensible
- * default. Values arrive as strings from the URL, so `page`/`limit` are coerced
- * to integers and bounded; `sort` is constrained to the known tokens.
+ * default. Values arrive as strings from the URL, so `limit` is coerced to an
+ * integer and bounded; `sort`/`dir` are constrained to the known tokens; the
+ * opaque `cursor` token is decoded here (at the edge) into the keyset position
+ * the use case consumes — a malformed token yields a 400 VALIDATION_ERROR.
+ *
+ * Defined as a plain object first so `countNotesSchema` can `.pick` from it; the
+ * exported list schema layers a cross-field check on top (see below).
  */
-export const listNotesSchema = z.object({
+const listNotesObjectSchema = z.object({
   tag: z.string().trim().min(1, { message: 'Tag filter cannot be empty' }).optional(),
   // Optional inclusive created-at bounds (combine with tag/archived). Each is an
   // ISO 8601 date or datetime; an invalid value yields a 400 VALIDATION_ERROR.
   createdAfter: isoDateFilter('createdAfter'),
   createdBefore: isoDateFilter('createdBefore'),
-  page: z.coerce
-    .number({ message: 'page must be a number' })
-    .int({ message: 'page must be an integer' })
-    .min(1, { message: 'page must be >= 1' })
-    .default(DEFAULT_PAGE),
   limit: z.coerce
     .number({ message: 'limit must be a number' })
     .int({ message: 'limit must be an integer' })
@@ -122,10 +124,30 @@ export const listNotesSchema = z.object({
     .max(MAX_LIMIT, { message: `limit cannot exceed ${MAX_LIMIT}` })
     .default(DEFAULT_LIMIT),
   sort: z
-    .enum(NOTE_SORT_OPTIONS, {
-      message: `sort must be one of: ${NOTE_SORT_OPTIONS.join(', ')}`,
+    .enum(NOTE_SORT_FIELDS, {
+      message: `sort must be one of: ${NOTE_SORT_FIELDS.join(', ')}`,
     })
-    .default(DEFAULT_SORT),
+    .default(DEFAULT_SORT_FIELD),
+  dir: z
+    .enum(SORT_DIRECTIONS, {
+      message: `dir must be one of: ${SORT_DIRECTIONS.join(', ')}`,
+    })
+    .default(DEFAULT_SORT_DIRECTION),
+  cursor: z
+    .string({ message: 'cursor must be a string' })
+    .transform((value, ctx) => {
+      try {
+        return decodeListCursor(value);
+      } catch (error) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message:
+            error instanceof InvalidCursorError ? error.message : 'cursor is invalid',
+        });
+        return z.NEVER;
+      }
+    })
+    .optional(),
   // Query values arrive as strings; accept the literal 'true'/'false' tokens and
   // coerce to a boolean. Absent → defaults to false (archived notes hidden).
   includeArchived: z
@@ -136,12 +158,25 @@ export const listNotesSchema = z.object({
     .default(false),
 });
 
+export const listNotesSchema = listNotesObjectSchema.superRefine((val, ctx) => {
+  // A cursor is minted under a specific sort field + direction. Replaying it
+  // against a different ordering would page incorrectly, so reject the mismatch
+  // (400) rather than silently returning wrong results.
+  if (val.cursor && (val.cursor.sortField !== val.sort || val.cursor.direction !== val.dir)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['cursor'],
+      message: 'cursor does not match the requested sort/dir',
+    });
+  }
+});
+
 /**
  * Query params for GET /api/v1/notes/count — the listing's filter knobs only
  * (tag / created-at range / includeArchived); pagination and sort don't affect
  * a count. Reuses the listing field definitions so validation stays in lock-step.
  */
-export const countNotesSchema = listNotesSchema.pick({
+export const countNotesSchema = listNotesObjectSchema.pick({
   tag: true,
   createdAfter: true,
   createdBefore: true,

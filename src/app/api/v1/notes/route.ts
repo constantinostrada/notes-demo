@@ -2,7 +2,7 @@
  * Next.js API Route: /api/v1/notes
  *
  * Collection endpoint for the Notes resource.
- *   - GET  → list notes (paginated/sorted via `?page=&limit=&sort=`,
+ *   - GET  → list notes (cursor-paginated/sorted via `?sort=&dir=&cursor=&limit=`,
  *            optionally filtered by `?tag=` and by a created-at range via
  *            `?createdAfter=&createdBefore=` (ISO dates)). Archived
  *            (soft-deleted) notes are excluded by default; pass
@@ -28,8 +28,8 @@ export async function GET(request: NextRequest) {
   const limited = enforceRateLimit(request);
   if (limited) return toNextResponse(limited);
 
-  // Forward the listing query params (pagination, sort, tag filter). Absent or
-  // empty values become `undefined` so the schema applies its defaults rather
+  // Forward the listing query params (sort, cursor pagination, filters). Absent
+  // or empty values become `undefined` so the schema applies its defaults rather
   // than choking on `null`/`""`.
   const params = request.nextUrl.searchParams;
   const param = (key: string): string | undefined => {
@@ -39,9 +39,10 @@ export async function GET(request: NextRequest) {
 
   const result = await NoteController.listNotes({
     tag: param('tag'),
-    page: param('page'),
     limit: param('limit'),
     sort: param('sort'),
+    dir: param('dir'),
+    cursor: param('cursor'),
     includeArchived: param('includeArchived'),
     createdAfter: param('createdAfter'),
     createdBefore: param('createdBefore'),

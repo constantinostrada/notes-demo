@@ -40,7 +40,7 @@ describe('DeleteNoteUseCase (soft delete / archive)', () => {
     await deleteNote.execute({ id: b.id });
 
     const visible = await listNotes.execute();
-    expect(visible.pagination.total).toBe(1);
+    expect(visible.notes).toHaveLength(1);
     expect(visible.notes.map((n) => n.id)).toEqual([a.id]);
   });
 
@@ -50,8 +50,11 @@ describe('DeleteNoteUseCase (soft delete / archive)', () => {
 
     await deleteNote.execute({ id: b.id });
 
-    const all = await listNotes.execute({ includeArchived: true, sort: 'title' });
-    expect(all.pagination.total).toBe(2);
+    const all = await listNotes.execute({
+      includeArchived: true,
+      sortField: 'title',
+    });
+    expect(all.notes).toHaveLength(2);
     expect(all.notes.map((n) => n.id).sort()).toEqual([a.id, b.id].sort());
   });
 

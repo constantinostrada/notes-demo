@@ -5,7 +5,12 @@
  * DTOs decouple the application layer from domain entities.
  */
 
-import { SearchCursor } from '@/domain/repositories/INoteRepository';
+import {
+  ListCursor,
+  NoteSortField,
+  SearchCursor,
+  SortDirection,
+} from '@/domain/repositories/INoteRepository';
 
 export interface CreateNoteInputDTO {
   title: string;
@@ -108,28 +113,19 @@ export interface DueNotesOutputDTO {
 }
 
 /**
- * Listing knobs shared by the interface (validation/defaults) and the use case.
- *
- * `sort` is a single token: a sort field optionally prefixed with `-` for
- * descending order (e.g. `createdAt`, `-createdAt`, `title`). Keeping the
- * allowed tokens here lets the zod schema and the use case agree on one source.
+ * Sort knobs shared by the interface (validation/defaults) and the use case.
+ * `sort` chooses the field, `dir` the direction — kept as separate params (not a
+ * single `-field` token) so the contract reads clearly. Listing these here lets
+ * the zod schema and the use case agree on one source of truth.
  */
-export const NOTE_SORT_OPTIONS = [
-  'createdAt',
-  '-createdAt',
-  'updatedAt',
-  '-updatedAt',
-  'title',
-  '-title',
-] as const;
-
-export type NoteSortOption = (typeof NOTE_SORT_OPTIONS)[number];
+export const NOTE_SORT_FIELDS = ['createdAt', 'title'] as const satisfies readonly NoteSortField[];
+export const SORT_DIRECTIONS = ['asc', 'desc'] as const satisfies readonly SortDirection[];
 
 /** Sensible listing defaults / bounds (newest-first, 20 per page, cap 100). */
-export const DEFAULT_PAGE = 1;
 export const DEFAULT_LIMIT = 20;
 export const MAX_LIMIT = 100;
-export const DEFAULT_SORT: NoteSortOption = '-createdAt';
+export const DEFAULT_SORT_FIELD: NoteSortField = 'createdAt';
+export const DEFAULT_SORT_DIRECTION: SortDirection = 'desc';
 
 export interface ListNotesInputDTO {
   /** Optional tag filter; when present, only notes with this tag are returned. */
@@ -140,12 +136,14 @@ export interface ListNotesInputDTO {
   createdAfter?: Date;
   /** Inclusive upper bound on a note's creation time (createdAt <= this). */
   createdBefore?: Date;
-  /** 1-based page number (defaults to DEFAULT_PAGE). */
-  page?: number;
-  /** Page size (defaults to DEFAULT_LIMIT). */
+  /** Page size (defaults to DEFAULT_LIMIT, capped at MAX_LIMIT). */
   limit?: number;
-  /** Sort token (defaults to DEFAULT_SORT). */
-  sort?: string;
+  /** Field to order by (defaults to DEFAULT_SORT_FIELD). */
+  sortField?: NoteSortField;
+  /** Order direction (defaults to DEFAULT_SORT_DIRECTION). */
+  sortDirection?: SortDirection;
+  /** Decoded keyset cursor; when set, results resume after this position. */
+  cursor?: ListCursor;
 }
 
 /**
@@ -248,18 +246,13 @@ export interface ExportNotesOutputDTO {
   notes: NoteOutputDTO[];
 }
 
-/** Pagination metadata returned alongside a page of notes. */
-export interface PaginationMetaDTO {
-  page: number;
-  limit: number;
-  total: number;
-  totalPages: number;
-  hasNextPage: boolean;
-  hasPreviousPage: boolean;
-  sort: string;
-}
-
-export interface PaginatedNotesOutputDTO {
+/**
+ * A cursor-paginated page of a notes listing. Mirrors the search/pinned output
+ * contract ({ notes, next_cursor }) since all three share the keyset iteration
+ * model. `next_cursor` is the opaque token to fetch the following page, or
+ * `null` on the last page.
+ */
+export interface ListNotesOutputDTO {
   notes: NoteOutputDTO[];
-  pagination: PaginationMetaDTO;
+  next_cursor: string | null;
 }

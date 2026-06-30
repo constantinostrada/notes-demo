@@ -2,6 +2,7 @@ import { NextRequest } from 'next/server';
 import { beforeEach, describe, expect, it } from 'vitest';
 
 import { container } from '@/infrastructure/di/container';
+import { Note } from '@/domain/entities/Note';
 import { GET as listNotes, POST as createNote } from '@/app/api/v1/notes/route';
 import {
   GET as getNoteById,
@@ -52,6 +53,19 @@ async function postNote(body: unknown) {
   expect(res.status).toBe(201);
   const json = await res.json();
   return json.data;
+}
+
+/**
+ * Persist a note straight through the repository with an explicit creation time.
+ * Rapid POSTs can share a millisecond (where only the id tiebreaker decides
+ * order), so createdAt-ordering tests seed distinct timestamps this way.
+ */
+async function seedAt(id: string, title: string, createdAt: string): Promise<string> {
+  const at = new Date(createdAt);
+  await container
+    .getNoteRepository()
+    .save(Note.reconstitute(id, title, 'body', [], at, at, null, null));
+  return id;
 }
 
 // The DI container caches a single repository on globalThis, and the exported
@@ -167,15 +181,13 @@ describe('PUT /api/v1/notes/:id (update colour)', () => {
 });
 
 describe('GET /api/v1/notes (list)', () => {
-  it('lists notes with pagination metadata and a tag filter', async () => {
+  it('cursor-paginates and sorts by title, with a tag filter', async () => {
     await postNote({ title: 'Alpha', content: 'a', tags: ['work'] });
     await postNote({ title: 'Beta', content: 'b', tags: ['work'] });
     await postNote({ title: 'Gamma', content: 'c', tags: ['home'] });
 
-    // First page, 2 per page, sorted by title ascending.
-    const res = await listNotes(
-      new NextRequest(`${BASE}?page=1&limit=2&sort=title`)
-    );
+    // First page, 2 at a time, sorted by title ascending.
+    const res = await listNotes(new NextRequest(`${BASE}?limit=2&sort=title&dir=asc`));
     expect(res.status).toBe(200);
 
     const { data } = await res.json();
@@ -183,20 +195,110 @@ describe('GET /api/v1/notes (list)', () => {
       'Alpha',
       'Beta',
     ]);
-    expect(data.pagination).toMatchObject({
-      page: 1,
-      limit: 2,
-      total: 3,
-      totalPages: 2,
-      hasNextPage: true,
-      hasPreviousPage: false,
-    });
+    expect(data.next_cursor).toEqual(expect.any(String));
+
+    // Second page resumes strictly after the cursor — no skip, no duplicate.
+    const next = await listNotes(
+      new NextRequest(`${BASE}?limit=2&sort=title&dir=asc&cursor=${data.next_cursor}`)
+    );
+    const nextJson = await next.json();
+    expect(nextJson.data.notes.map((n: { title: string }) => n.title)).toEqual(['Gamma']);
+    expect(nextJson.data.next_cursor).toBeNull();
 
     // Tag filter narrows the result set.
     const filtered = await listNotes(new NextRequest(`${BASE}?tag=home`));
     const filteredJson = await filtered.json();
-    expect(filteredJson.data.pagination.total).toBe(1);
+    expect(filteredJson.data.notes).toHaveLength(1);
     expect(filteredJson.data.notes[0].title).toBe('Gamma');
+  });
+
+  it('sorts by createdAt in both directions (newest-first is the default)', async () => {
+    // Distinct timestamps so ordering is by creation time, not the id tiebreaker.
+    const first = await seedAt('id-first', 'First', '2026-01-01T00:00:00Z');
+    const second = await seedAt('id-second', 'Second', '2026-02-01T00:00:00Z');
+    const third = await seedAt('id-third', 'Third', '2026-03-01T00:00:00Z');
+
+    const desc = await listNotes(new NextRequest(BASE)); // default sort=createdAt&dir=desc
+    expect((await desc.json()).data.notes.map((n: { id: string }) => n.id)).toEqual([
+      third,
+      second,
+      first,
+    ]);
+
+    const asc = await listNotes(new NextRequest(`${BASE}?sort=createdAt&dir=asc`));
+    expect((await asc.json()).data.notes.map((n: { id: string }) => n.id)).toEqual([
+      first,
+      second,
+      third,
+    ]);
+  });
+
+  it('pages stably through notes that share a title (equal sort keys)', async () => {
+    // Five notes with an identical title — ordering by title alone is ambiguous,
+    // so the id tiebreaker must keep paging deterministic across requests.
+    const created = [];
+    for (let i = 0; i < 5; i++) {
+      created.push(await postNote({ title: 'Same', content: `n${i}` }));
+    }
+    const expectedIds = created.map((n) => n.id).sort();
+
+    const seen: string[] = [];
+    let cursor: string | null = null;
+    for (let guard = 0; guard < 100; guard++) {
+      const url = cursor
+        ? `${BASE}?sort=title&dir=asc&limit=2&cursor=${cursor}`
+        : `${BASE}?sort=title&dir=asc&limit=2`;
+      const page = await listNotes(new NextRequest(url));
+      const json = await page.json();
+      seen.push(...json.data.notes.map((n: { id: string }) => n.id));
+      cursor = json.data.next_cursor;
+      if (!cursor) break;
+    }
+
+    expect(seen).toHaveLength(5);
+    expect(new Set(seen).size).toBe(5); // no duplicates
+    expect([...seen].sort()).toEqual(expectedIds); // none skipped
+  });
+
+  it('rejects an invalid sort with 400 VALIDATION_ERROR', async () => {
+    const res = await listNotes(new NextRequest(`${BASE}?sort=bogus`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects an invalid dir with 400 VALIDATION_ERROR', async () => {
+    const res = await listNotes(new NextRequest(`${BASE}?dir=sideways`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects a malformed cursor with 400 VALIDATION_ERROR', async () => {
+    const res = await listNotes(new NextRequest(`${BASE}?cursor=not-a-real-cursor`));
+
+    expect(res.status).toBe(400);
+    const { error } = await res.json();
+    expect(error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('rejects a cursor minted under a different sort/dir with 400', async () => {
+    await postNote({ title: 'Alpha', content: 'a' });
+    await postNote({ title: 'Beta', content: 'b' });
+
+    // Mint a cursor under title/asc...
+    const first = await listNotes(new NextRequest(`${BASE}?sort=title&dir=asc&limit=1`));
+    const { data } = await first.json();
+    expect(data.next_cursor).toEqual(expect.any(String));
+
+    // ...then replay it under a different ordering → rejected.
+    const mismatched = await listNotes(
+      new NextRequest(`${BASE}?sort=createdAt&dir=desc&cursor=${data.next_cursor}`)
+    );
+    expect(mismatched.status).toBe(400);
+    expect((await mismatched.json()).error.code).toBe('VALIDATION_ERROR');
   });
 
   it('rejects an out-of-range limit with 400 VALIDATION_ERROR', async () => {
@@ -228,13 +330,14 @@ describe('GET /api/v1/notes (list)', () => {
     expect(res.status).toBe(200);
 
     const { data } = await res.json();
-    expect(data.pagination.total).toBe(1);
+    expect(data.notes).toHaveLength(1);
     expect(data.notes[0].title).toBe('Alpha');
 
     // A past-only upper bound excludes the just-created notes (stable, no rows).
     const empty = await listNotes(new NextRequest(`${BASE}?createdBefore=2020-01-01`));
     const emptyJson = await empty.json();
-    expect(emptyJson.data.pagination.total).toBe(0);
+    expect(emptyJson.data.notes).toHaveLength(0);
+    expect(emptyJson.data.next_cursor).toBeNull();
   });
 });
 
@@ -309,7 +412,7 @@ describe('DELETE /api/v1/notes/:id (soft delete / archive)', () => {
     // Default listing excludes the archived note.
     const listed = await listNotes(new NextRequest(BASE));
     const listedJson = await listed.json();
-    expect(listedJson.data.pagination.total).toBe(1);
+    expect(listedJson.data.notes).toHaveLength(1);
     expect(listedJson.data.notes.map((n: { id: string }) => n.id)).toEqual([keep.id]);
 
     // ?includeArchived=true surfaces it, flagged with a deletedAt timestamp.
@@ -317,7 +420,7 @@ describe('DELETE /api/v1/notes/:id (soft delete / archive)', () => {
       new NextRequest(`${BASE}?includeArchived=true&sort=title`)
     );
     const withArchivedJson = await withArchived.json();
-    expect(withArchivedJson.data.pagination.total).toBe(2);
+    expect(withArchivedJson.data.notes).toHaveLength(2);
     const archivedRow = withArchivedJson.data.notes.find(
       (n: { id: string }) => n.id === archived.id
     );
@@ -643,7 +746,7 @@ describe('POST /api/v1/notes/bulk-archive', () => {
       new NextRequest(`${BASE}?includeArchived=true`)
     );
     const withArchivedJson = await withArchived.json();
-    expect(withArchivedJson.data.pagination.total).toBe(3);
+    expect(withArchivedJson.data.notes).toHaveLength(3);
     const archivedRow = withArchivedJson.data.notes.find(
       (n: { id: string }) => n.id === a.id
     );
