@@ -243,6 +243,24 @@ export const bulkArchiveSchema = z.object({
     .min(1, { message: 'Provide at least one note id to archive' }),
 });
 
+/**
+ * Body for POST /api/v1/notes/bulk-restore: a non-empty array of note ids to
+ * restore (un-archive) in one request. Shape-only — ids that don't match an
+ * archived note (unknown or already active) are ignored by the use case, not
+ * rejected here, so we only require non-empty strings (no UUID format check).
+ */
+export const bulkRestoreSchema = z.object({
+  ids: z
+    .array(
+      z
+        .string({ message: 'Each id must be a string' })
+        .trim()
+        .min(1, { message: 'id cannot be empty' }),
+      { message: 'ids must be an array of note ids' }
+    )
+    .min(1, { message: 'Provide at least one note id to restore' }),
+});
+
 export type CreateNotePayload = z.infer<typeof createNoteSchema>;
 export type UpdateNotePayload = z.infer<typeof updateNoteSchema>;
 export type SearchNotesQuery = z.infer<typeof searchNotesSchema>;
@@ -252,3 +270,4 @@ export type CountNotesQuery = z.infer<typeof countNotesSchema>;
 export type ReminderPayload = z.infer<typeof reminderSchema>;
 export type ImportNotesPayload = z.infer<typeof importNotesSchema>;
 export type BulkArchivePayload = z.infer<typeof bulkArchiveSchema>;
+export type BulkRestorePayload = z.infer<typeof bulkRestoreSchema>;

@@ -25,6 +25,7 @@ import {
   pinnedNotesSchema,
   reminderSchema,
   bulkArchiveSchema,
+  bulkRestoreSchema,
 } from '@/interfaces/http/validation/noteSchemas';
 
 export class NoteController {
@@ -122,6 +123,19 @@ export class NoteController {
       const input = bulkArchiveSchema.parse(body);
 
       const useCase = container.getBulkArchiveNotesUseCase();
+      const result = await useCase.execute(input);
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
+  static async bulkRestoreNotes(body: unknown): Promise<ControllerResult> {
+    try {
+      const input = bulkRestoreSchema.parse(body);
+
+      const useCase = container.getBulkRestoreNotesUseCase();
       const result = await useCase.execute(input);
 
       return ok(result);

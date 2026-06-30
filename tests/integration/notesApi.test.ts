@@ -17,6 +17,7 @@ import { PUT as setReminderById } from '@/app/api/v1/notes/[id]/reminder/route';
 import { GET as listDueNotes } from '@/app/api/v1/notes/due/route';
 import { GET as countDueNotes } from '@/app/api/v1/notes/due/count/route';
 import { POST as bulkArchiveNotes } from '@/app/api/v1/notes/bulk-archive/route';
+import { POST as bulkRestoreNotes } from '@/app/api/v1/notes/bulk-restore/route';
 
 /**
  * Integration tests for the Notes HTTP API.
@@ -664,6 +665,66 @@ describe('POST /api/v1/notes/bulk-archive', () => {
 
   it('returns 400 VALIDATION_ERROR for an empty id list', async () => {
     const { status, json } = await bulkArchive({ ids: [] });
+    expect(status).toBe(400);
+    expect(json.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('POST /api/v1/notes/bulk-restore', () => {
+  /** POST a bulk-archive request and return { status, json }. */
+  async function bulkArchive(body: unknown) {
+    const res = await bulkArchiveNotes(
+      jsonRequest(`${BASE}/bulk-archive`, 'POST', body)
+    );
+    return { status: res.status, json: await res.json() };
+  }
+
+  /** POST a bulk-restore request and return { status, json }. */
+  async function bulkRestore(body: unknown) {
+    const res = await bulkRestoreNotes(
+      jsonRequest(`${BASE}/bulk-restore`, 'POST', body)
+    );
+    return { status: res.status, json: await res.json() };
+  }
+
+  it('restores every listed note: reappears in list and search', async () => {
+    const a = await postNote({ title: 'Alpha', content: 'find me' });
+    const b = await postNote({ title: 'Beta', content: 'find me' });
+
+    await bulkArchive({ ids: [a.id, b.id] });
+
+    const { status, json } = await bulkRestore({ ids: [a.id, b.id] });
+    expect(status).toBe(200);
+    expect(json.data).toMatchObject({ restored: 2, skipped: 0, total: 2 });
+
+    // Both are back in the default listing and in search.
+    const listed = await listNotes(new NextRequest(BASE));
+    const listedJson = await listed.json();
+    expect(
+      listedJson.data.notes.map((n: { id: string }) => n.id).sort()
+    ).toEqual([a.id, b.id].sort());
+
+    const found = await searchNotes(new NextRequest(`${BASE}/search?q=find%20me`));
+    const foundJson = await found.json();
+    expect(
+      foundJson.data.notes.map((n: { id: string }) => n.id).sort()
+    ).toEqual([a.id, b.id].sort());
+  });
+
+  it('ignores unknown and not-archived ids without failing the batch', async () => {
+    // `a` is active (never archived); 'does-not-exist' is unknown.
+    const a = await postNote({ title: 'Alpha', content: 'x' });
+
+    const { status, json } = await bulkRestore({
+      ids: [a.id, 'does-not-exist'],
+    });
+
+    expect(status).toBe(200);
+    expect(json.data).toMatchObject({ restored: 0, skipped: 2, total: 2 });
+  });
+
+  it('returns 400 VALIDATION_ERROR for an empty id list', async () => {
+    const { status, json } = await bulkRestore({ ids: [] });
     expect(status).toBe(400);
     expect(json.error.code).toBe('VALIDATION_ERROR');
   });

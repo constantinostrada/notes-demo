@@ -191,6 +191,20 @@ export class Note {
   }
 
   /**
+   * Restore the note (undo a soft delete), making it visible in listings/search
+   * again. Idempotent: restoring an already-active note is a no-op (no spurious
+   * `updatedAt` bump). Clears the archive tombstone and stamps `updatedAt` so the
+   * change is reflected in listings/sorting.
+   */
+  restore(): void {
+    if (this._deletedAt === null) {
+      return;
+    }
+    this._deletedAt = null;
+    this._updatedAt = new Date();
+  }
+
+  /**
    * Whether the note is archived (soft-deleted).
    */
   isArchived(): boolean {

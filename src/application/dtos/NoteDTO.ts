@@ -221,6 +221,24 @@ export interface BulkArchiveNotesOutputDTO {
   notes: NoteOutputDTO[];
 }
 
+/** Input for restoring several archived notes at once by id. */
+export interface BulkRestoreNotesInputDTO {
+  ids: string[];
+}
+
+/**
+ * Outcome of a bulk restore. `restored` notes were newly un-archived (made
+ * visible again); the remaining ids (`skipped` = unknown, not-archived, or
+ * repeated within the payload) were ignored without error. `total` is the number
+ * of ids received.
+ */
+export interface BulkRestoreNotesOutputDTO {
+  restored: number;
+  skipped: number;
+  total: number;
+  notes: NoteOutputDTO[];
+}
+
 /**
  * Full snapshot of every note (archived included), shaped so it can be re-imported.
  */
