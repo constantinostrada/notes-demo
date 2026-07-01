@@ -19,6 +19,7 @@ import { GET as listDueNotes } from '@/app/api/v1/notes/due/route';
 import { GET as countDueNotes } from '@/app/api/v1/notes/due/count/route';
 import { POST as bulkArchiveNotes } from '@/app/api/v1/notes/bulk-archive/route';
 import { POST as bulkRestoreNotes } from '@/app/api/v1/notes/bulk-restore/route';
+import { POST as restoreNoteById } from '@/app/api/v1/notes/[id]/restore/route';
 
 /**
  * Integration tests for the Notes HTTP API.
@@ -830,5 +831,69 @@ describe('POST /api/v1/notes/bulk-restore', () => {
     const { status, json } = await bulkRestore({ ids: [] });
     expect(status).toBe(400);
     expect(json.error.code).toBe('VALIDATION_ERROR');
+  });
+});
+
+describe('POST /api/v1/notes/:id/restore (restore a single note)', () => {
+  /** POST /:id/restore and return { status, json }. */
+  async function restore(id: string) {
+    const res = await restoreNoteById(
+      new NextRequest(`${BASE}/${id}/restore`, { method: 'POST' }),
+      { params: { id } }
+    );
+    return { status: res.status, json: await res.json().catch(() => null) };
+  }
+
+  /** DELETE (soft-delete / archive) a note, asserting 204. */
+  async function archive(id: string) {
+    const del = await deleteNoteById(new NextRequest(`${BASE}/${id}`), {
+      params: { id },
+    });
+    expect(del.status).toBe(204);
+  }
+
+  it('restores an archived note: 200, deletedAt cleared, back in the listing', async () => {
+    const created = await postNote({ title: 'Recover me', content: 'find me' });
+    await archive(created.id);
+
+    // Hidden from the default listing while archived.
+    const hidden = await listNotes(new NextRequest(BASE));
+    const hiddenJson = await hidden.json();
+    expect(hiddenJson.data.notes.map((n: { id: string }) => n.id)).not.toContain(
+      created.id
+    );
+
+    const { status, json } = await restore(created.id);
+    expect(status).toBe(200);
+    expect(json.data.id).toBe(created.id);
+    expect(json.data.deletedAt).toBeNull();
+
+    // Reappears in the default listing and in search.
+    const listed = await listNotes(new NextRequest(BASE));
+    const listedJson = await listed.json();
+    expect(listedJson.data.notes.map((n: { id: string }) => n.id)).toContain(
+      created.id
+    );
+
+    const found = await searchNotes(new NextRequest(`${BASE}/search?q=find%20me`));
+    const foundJson = await found.json();
+    expect(foundJson.data.notes.map((n: { id: string }) => n.id)).toContain(
+      created.id
+    );
+  });
+
+  it('is idempotent: restoring an already-active note returns 200 unchanged', async () => {
+    const created = await postNote({ title: 'Already active', content: 'x' });
+
+    const { status, json } = await restore(created.id);
+    expect(status).toBe(200);
+    expect(json.data.id).toBe(created.id);
+    expect(json.data.deletedAt).toBeNull();
+  });
+
+  it('returns 404 NOTE_NOT_FOUND for an unknown id', async () => {
+    const { status, json } = await restore('does-not-exist');
+    expect(status).toBe(404);
+    expect(json.error.code).toBe('NOTE_NOT_FOUND');
   });
 });

@@ -15,6 +15,7 @@ import { UpdateNoteUseCase } from '@/application/use-cases/UpdateNoteUseCase';
 import { DeleteNoteUseCase } from '@/application/use-cases/DeleteNoteUseCase';
 import { BulkArchiveNotesUseCase } from '@/application/use-cases/BulkArchiveNotesUseCase';
 import { BulkRestoreNotesUseCase } from '@/application/use-cases/BulkRestoreNotesUseCase';
+import { RestoreNoteUseCase } from '@/application/use-cases/RestoreNoteUseCase';
 import { SearchNotesUseCase } from '@/application/use-cases/SearchNotesUseCase';
 import { ExportNotesUseCase } from '@/application/use-cases/ExportNotesUseCase';
 import { ImportNotesUseCase } from '@/application/use-cases/ImportNotesUseCase';
@@ -116,6 +117,10 @@ class DIContainer {
 
   getBulkRestoreNotesUseCase(): BulkRestoreNotesUseCase {
     return new BulkRestoreNotesUseCase(this.getNoteRepository());
+  }
+
+  getRestoreNoteUseCase(): RestoreNoteUseCase {
+    return new RestoreNoteUseCase(this.getNoteRepository());
   }
 
   getSearchNotesUseCase(): SearchNotesUseCase {

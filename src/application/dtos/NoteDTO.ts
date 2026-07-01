@@ -98,6 +98,11 @@ export interface SetPinInputDTO {
   id: string;
 }
 
+/** Input for restoring (un-archiving) a single note by id. */
+export interface RestoreNoteInputDTO {
+  id: string;
+}
+
 /**
  * Input for setting/clearing a note's reminder. `dueAt` is the reminder time
  * (a `Date`), or `null` to clear the reminder.

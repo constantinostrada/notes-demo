@@ -145,6 +145,17 @@ export class NoteController {
     }
   }
 
+  static async restoreNote(id: string): Promise<ControllerResult> {
+    try {
+      const useCase = container.getRestoreNoteUseCase();
+      const result = await useCase.execute({ id });
+
+      return ok(result);
+    } catch (error) {
+      return mapError(error);
+    }
+  }
+
   static async searchNotes(rawQuery?: unknown): Promise<ControllerResult> {
     try {
       const { q, cursor, limit } = searchNotesSchema.parse(rawQuery ?? {});
